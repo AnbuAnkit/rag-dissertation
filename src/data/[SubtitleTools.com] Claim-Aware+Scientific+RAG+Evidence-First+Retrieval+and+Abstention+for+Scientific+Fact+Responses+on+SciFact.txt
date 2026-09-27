@@ -1,0 +1,416 @@
+﻿                                     Journal of Advanced Computing Systems (JACS) 
+                                                  ISSN: 3066-3962 
+                                            Content Available at SciPublication
+
+
+
+
+
+
+
+
+
+Claim-Aware Scientific RAG: Evidence-First Retrieval and Abstention for 
+
+
+Scientific Fact Responses on SciFact
+
+Jing Chen1, Xinzhuo Sun2, Vincent Brown3
+
+1Industrial Engineering and Operations Research, UCB, CA, USA
+2Computer Science, Cornell Tech, NY, USA
+3Information Technology, Illinois Tech, IL, USA
+
+jingc0606@gmail.com
+                                             DOI: 10.69987/JACS.2023.30102
+
+
+
+
+ Keywords                             Abstract
+
+
+ RAG; fact verification;              Retrieval-augmented generation (RAG) is widely adopted to reduce 
+
+ evidence-grounded                    hallucinations, yet most systems still answer even when retrieval fails, 
+
+ generation; hallucination            producing fluent but unsupported “scientific facts”. This paper studies a claim- 
+
+ reduction; SciFact;                  aware scientific RAG design principle: the system is allowed to answer only 
+
+ BEIR; abstention;                    when it can cite evidence. We conduct full experimental evaluations on the 
+
+ reranking; hybrid                    SciFact scientific claim retrieval task using the BEIR-style SciFact split (5,183 
+ retrieval                            abstracts; 809 training claims; 300 test claims). We compare a sparse BM25 
+
+                                      retriever, a contrastive dense dual-encoder, and a hybrid retriever using 
+
+                                      reciprocal rank fusion (RRF), followed by an interaction-based reranker. We 
+                                      then add an evidence layer that extracts candidate citation sentences and scores 
+
+                                      them with a lightweight verifier, and we enforce an abstention gate that refuses 
+
+                                      to answer when confidence is low. On the SciFact test set, BM25 achieves 
+                                      nDCG@10=0.662 and Recall@100=0.883. The dense retriever alone 
+
+                                      underperforms (nDCG@10=0.537), but hybrid RRF improves Recall@100 to 
+
+                                      0.923 and a reranker recovers nDCG@10 to 0.659. For evidence extraction, 
+                                      token-level evidence F1 reaches 0.190 when selecting two sentences. Finally, 
+
+                                      we quantify a refusal–hallucination tradeoff via confidence-based abstention: 
+
+                                      gating by the top-1 BM25 score reduces the rate of answers without any 
+                                      relevant abstract in the top-10 from 0.193 to 0.047 at 28.3% answer coverage. 
+
+                                      These results provide a reproducible baseline showing how evidence-first 
+
+                                      retrieval and calibrated refusal can be combined to control hallucinations in 
+                                      scientific RAG.
+
+
+
+
+
+                                                            evidence-grounded generation: constrain outputs so that 
+1. Introduction                                             they can be traced to retrieved sources.
+
+
+Large pretrained language models have enabled               Retrieval-augmented generation (RAG) operationalizes 
+interactive systems that can answer questions,              grounding by combining a retriever with a generator. 
+
+summarize papers, and explain scientific concepts.          The retriever fetches relevant documents from a corpus, 
+
+Despite these capabilities, language models do not          and the generator conditions on these documents when 
+
+inherently provide guarantees of factuality: they can       producing an answer [6]. RAG is particularly attractive 
+
+generate fluent statements that are not supported by any    for scientific domains, where the corpus (papers, 
+
+underlying evidence. In scientific and biomedical           abstracts, clinical guidelines) evolves and cannot be 
+contexts, this behavior is risky because users often        fully memorized. However, RAG does not 
+
+interpret responses as “scientific facts”, and small errors automatically eliminate hallucinations. If retrieval fails 
+
+can lead to wrong decisions. Hallucination has been         to retrieve relevant evidence, the generator can still 
+
+documented in neural text generation even when the          produce a plausible answer; if the system attaches 
+
+model conditions on an input document; models can           citations, those citations may point to irrelevant 
+
+introduce unsupported entities, relationships, and          documents. For this reason, retrieval quality and 
+numbers [14]. A central research direction is therefore     evidence attribution are as important as generation 
+
+                                                            quality.
+
+
+
+
+
+                                            Vol. 3(1), pp. 16-30, January 2023 
+                                                       [16]
+
+ Journal of Advanced Computing Systems (JACS)                                                    ISSN: 3066-3962
+
+
+
+
+
+
+
+                                                           Even with strong retrieval and reranking, a remaining 
+Scientific claim verification tasks provide a natural      safety issue is what the system does when evidence is 
+testbed for claim-aware RAG. In these tasks, the input     absent or low confidence. Many deployed assistants 
+is an atomic claim (often one sentence), and the system    attempt to always answer, which makes hallucination 
+must retrieve evidence from scientific documents to        inevitable whenever retrieval fails. A more principled 
+support or refute the claim. The SciFact dataset contains  approach is selective answering (abstention): answer 
+expert-written scientific claims paired with abstracts     only when confidence is high and refuse otherwise. 
+and includes evidence rationales in the original release   Selective classification formalizes this tradeoff between 
+[2]. SciFact is related to general fact verification       risk and coverage and provides methods to set rejection 
+benchmarks such as FEVER [13], but differs in domain,      thresholds for a desired risk level [15]. Making 
+style, and evidence sources. SciFact has a retrieval       confidence meaningful often requires calibration; 
+component (find relevant abstracts) and a rationale        temperature scaling is a simple and effective calibration 
+selection component (find evidence sentences) [2]. In a    technique [16]. In a claim-aware RAG system, 
+RAG setting, both are required: without retrieving the     abstention can be based on retrieval confidence signals 
+right abstracts, the system cannot be grounded, and        (e.g., retrieval scores, margin between top results) and 
+without identifying the right sentences, citations         on evidence consistency signals (e.g., a verifier score 
+become vague.                                              that tests whether evidence entails the claim).
+
+
+Information retrieval research provides strong baselines   This paper studies an evidence-first scientific RAG 
+and evaluation methodology for these tasks. Sparse         pipeline under a strict policy: the system is only allowed 
+term-matching retrieval methods such as BM25 remain        to answer when retrieval returns evidence with 
+surprisingly strong across datasets, as highlighted by the sufficient confidence; otherwise it refuses. We focus on 
+BEIR benchmark [1]. BM25’s robustness comes from           measurable properties of the evidence pipeline rather 
+lexical matching and inverse document frequency            than the open-ended generation step. Concretely, we 
+weighting [3], [21]. In parallel, dense retrieval has      evaluate: (i) document retrieval quality (nDCG@10 and 
+become a standard approach for semantic retrieval.         Recall@100), (ii) sentence-level evidence extraction 
+Dense retrievers represent queries and documents as        quality (evidence F1), and (iii) refusal and hallucination 
+vectors and score candidates by similarity, commonly       rates under confidence-based gating. We emphasize 
+dot product. DPR popularized a supervised dual-            reproducibility: all results are computed from the 
+encoder trained with in-batch negatives [7]. More recent   released SciFact retrieval files and the explicit 
+work showed that unsupervised contrastive pretraining      hyperparameters reported in this paper [23-36].
+can produce dense retrievers that transfer across 
+domains (Contriever [4]), and that weakly supervised       Our contributions are as follows. First, we conduct full 
+contrastive pretraining over large text pairs can yield    experimental evaluations on the SciFact retrieval split 
+strong general-purpose embeddings (E5 [5]). These          using a controlled comparison between BM25, a 
+models and others are often evaluated on BEIR and          contrastive dense retriever, and a hybrid retriever with 
+MTEB [1], [20].                                            RRF fusion, followed by a reranker. Second, we 
+Hybrid retrieval combines sparse and dense approaches      implement a sentence-level evidence module that 
+to leverage complementary strengths. Sparse methods        extracts candidate citations and evaluates evidence 
+are precise for lexical cues (e.g., gene names, drug       matching using reproducible pseudo-gold targets 
+dosages), while dense methods capture paraphrases and      derived from the corpus. Third, we quantify a refusal– 
+broader semantics. Fusion methods such as reciprocal       hallucination tradeoff and show that simple confidence 
+rank fusion (RRF) are widely used because they are         gating can substantially reduce the frequency of answers 
+simple and effective without requiring score calibration   produced without any relevant retrieved abstract. These 
+between systems [9]. However, high recall alone is         contributions provide a baseline for future work on 
+insufficient for RAG. In citation-based answering, the     claim verification and evidence-grounded scientific 
+system must place truly relevant evidence near the top     RAG.
+of the ranking, because generators typically condition 
+on a small number of retrieved documents (often 3–10).     Relation to language-model pretraining for science. 
+Reranking is therefore standard: after retrieving a        Many scientific RAG systems rely on pretrained 
+candidate set, a stronger interaction model reorders       encoders that better capture scientific terminology and 
+candidates using richer query–document features.           discourse. SciBERT adapts BERT pretraining to 
+Cross-encoder rerankers based on BERT-style models         scientific text and consistently improves scientific NLP 
+are known to improve ranking quality [8], but are          tasks [18]. Citation-aware pretraining further improves 
+computationally expensive because they process each        document representations: SPECTER learns paper 
+query–document pair jointly. Architectures such as         embeddings from citation graphs and has been used to 
+ColBERT reduce cost by delaying interaction [10].          improve retrieval and clustering in scientific corpora 
+                                                           [19]. These models motivate a practical view of
+
+
+
+
+
+
+                                           Vol. 3(1), pp. 16-30, January 2023 
+                                                      [17]
+
+ Journal of Advanced Computing Systems (JACS)                                                   ISSN: 3066-3962
+
+
+
+
+
+
+
+scientific RAG: high-quality retrieval depends on both    should be compared under the same metrics and splits 
+lexical matching and domain-appropriate semantic          [1]. In scientific domains, recall is particularly important 
+representations. In our experiments we isolate retrieval  because a single missed abstract can prevent grounding. 
+and abstention mechanisms using lightweight models;       At the same time, for citation-based answers, early 
+the same protocol can directly evaluate stronger          precision (e.g., nDCG@10) matters because the 
+pretrained encoders in future work.                       generator typically sees only a small retrieved context. 
+                                                          Our experiments therefore report both nDCG@10 and 
+Relation to ranking architectures. IR systems typically   Recall@100 and analyze Recall@10 as an evidence- 
+operate in stages: a fast first-stage retriever generates availability indicator.
+candidates, and a more expensive ranker reorders them. 
+Cross-encoders based on Transformers [17] are known       Comparison to fact verification beyond retrieval. Fact 
+to be strong rerankers because they jointly attend over   verification datasets often require predicting whether a 
+query and document tokens [8], [11]. They are,            claim is supported or refuted by evidence (FEVER [13], 
+however, expensive, which has motivated late-             SciFact [2]). RAG systems can be viewed as a 
+interaction models such as ColBERT [10] that              generalization: they must retrieve evidence, select 
+precompute document embeddings and perform                rationales, and then produce an answer that is faithful to 
+efficient interaction at query time. Our reranker is an   the evidence. This paper focuses on the retrieval and 
+interaction model implemented with interpretable          abstention components that are necessary for 
+features and logistic regression; it captures key         verification-style grounding; the same evaluation 
+interaction signals (lexical overlap and TF-IDF           pipeline can be extended with a stance classifier or a 
+similarity) while remaining fast and reproducible.        generator to form a complete verifier.
+
+
+Why abstention is essential for evidence-grounded 
+scientific RAG. Even with strong retrieval, the system    Method
+must decide whether retrieved evidence is sufficient to 
+justify answering. This decision can be framed as risk    This section specifies the dataset, preprocessing, 
+control. Selective classification provides a formal       retrieval methods, reranking, evidence extraction, 
+guarantee: given a confidence function, the system can    abstention policy, and evaluation metrics. All 
+reject low-confidence inputs to achieve a desired risk    components are implemented to be reproducible on 
+level [15]. In generation settings, risk corresponds to   CPU and to keep the experimental protocol transparent.
+producing an unsupported answer. Calibration 
+techniques, including temperature scaling [16], make      Dataset and splits. We use the SciFact retrieval task in a 
+confidence estimates more reliable. Our evaluation uses   corpus/queries/qrels format consistent with BEIR-style 
+a direct and transparent confidence signal derived from   evaluation [1]. The corpus contains 5,183 documents, 
+retrieval scores and reports the complete refusal–        each corresponding to a scientific abstract with a title 
+hallucination curve so that practitioners can select an   and a text field. The queries are 1,109 short scientific 
+operating point consistent with their application’s risk  claims, each with an identifier and a claim string. The 
+tolerance.                                                relevance annotations (qrels) provide binary relevance 
+                                                          between a query and one or more abstracts. The released 
+Scope of evaluation. The experiments in this paper focus  split contains 809 training queries with 919 relevant 
+on measurable evidence properties: document retrieval     query–document pairs, and 300 test queries with 339 
+accuracy, evidence sentence matching, and abstention      relevant pairs. Table 1 reports these counts, as well as 
+behavior. We intentionally do not tune a large generator, mean token lengths.
+because generation introduces additional variables        Text preprocessing. We tokenize text using a simple 
+(prompting, decoding, model choice) that can obscure      alphanumeric regular expression ([a-z0-9]+) and 
+the contribution of the evidence pipeline. By isolating   lowercase all tokens. This choice matches common IR 
+evidence-first retrieval and refusal, we provide a clear  tokenization in lightweight baselines and keeps the 
+foundation for integrating any generator: the generator   implementation consistent across BM25, TF-IDF 
+is invoked only when the pipeline has retrieved high-     features, and the dense models. Document length 
+confidence evidence, and the output can cite the          statistics are computed using this tokenizer.
+extracted evidence sentences.
+
+Evaluation perspective. Evidence-first scientific RAG     Sparse retrieval with BM25. BM25 is a probabilistic 
+needs evaluation signals that reflect both retrieval and  term-weighting model and remains a strong baseline 
+risk. In IR, nDCG measures how well a system places       across heterogeneous retrieval tasks [1]. We compute 
+relevant documents early in the ranking, while recall     BM25 scores with k1=1.2 and b=0.75 [3]. We build an 
+measures whether relevant documents are retrieved at      inverted index over the corpus tokens and evaluate each 
+all. BEIR standardized evaluation across diverse tasks    query by iterating over its terms and accumulating per- 
+and emphasized that both sparse and dense methods         document scores. We retrieve the top-200 documents
+
+
+
+
+
+                                          Vol. 3(1), pp. 16-30, January 2023 
+                                                     [18]
+
+ Journal of Advanced Computing Systems (JACS)                                                     ISSN: 3066-3962
+
+
+
+
+
+
+
+for each query for downstream hybrid fusion and             Jaccard similarity with the claim. This candidate set 
+reranking.                                                  provides sentence-level units that a downstream 
+                                                            generator can cite.
+Dense retrieval with a contrastive dual-encoder. Modern 
+dense retrieval systems typically use pretrained            Verifier model and pseudo-gold evidence. A claim- 
+transformers (e.g., BERT [11], RoBERTa [12], or             aware RAG system requires a consistency check that 
+domain-specific SciBERT [18]) and contrastive training      tests whether a candidate sentence is compatible with 
+objectives [7]. In this study, we implement a lightweight   the claim. We train a small transformer classifier (one 
+dense retriever that is fully trainable from scratch on     TransformerEncoder layer with token, position, and 
+CPU. The model represents a text as the mean of learned     segment embeddings) to score (claim, sentence) pairs. 
+token embeddings, implemented as an EmbeddingBag            Because our retrieval split provides only document- 
+mean pooling layer. We train on the SciFact training        level qrels, we construct pseudo-gold evidence 
+qrels using an in-batch contrastive objective. Given a      sentences as follows: for each relevant abstract in the 
+batch of B query–document positive pairs, we compute        qrels, we select the single sentence with maximum TF- 
+query embeddings Q∈R^{B×d}, document embeddings             IDF cosine similarity to the claim and treat it as the gold 
+D∈R^{B×d}, normalize them to unit length, and form          evidence sentence for that abstract. Positive training 
+logits L = QD^T/τ. We then apply cross-entropy loss         pairs are formed from these pseudo-gold evidence 
+with the diagonal as the correct matches (Eq. (2)).         sentences. Negative pairs are formed from random 
+Hyperparameters are reported in Table 3. We truncate        sentences sampled from top BM25 non-relevant 
+queries to 64 tokens and documents to 256 tokens for        candidate abstracts. At test time, we score candidate 
+computational efficiency. After training, we encode all     sentences and select the top-1 or top-2 evidence 
+documents once and perform retrieval by dot product         sentences to cite.
+similarity.                                                 Abstention policy and hallucination definition. We 
+                                                            implement a strict “answer only with evidence” policy. 
+Hybrid retrieval via reciprocal rank fusion. Sparse and     The system produces an answer if and only if the 
+dense retrieval emphasize different similarity signals.     retrieval confidence exceeds a threshold; otherwise it 
+Because their score distributions are not directly          refuses to answer. We use the top-1 BM25 score as the 
+comparable, we use RRF to combine their rankings            confidence signal, and we sweep thresholds to obtain a 
+without score calibration [9]. For each query, we fuse      family of operating points. We define a hallucination 
+the BM25 top-200 and dense top-200 lists using Eq. (3)      event as an answered query for which no relevant 
+with k=60. We retain the top-200 fused ranking for          abstract appears in the system’s top-10 retrieved 
+evaluation and for reranking.                               abstracts. This definition isolates retrieval failures that 
+Reranking with interaction features. Cross-encoder          inevitably cause evidence-free generation.
+rerankers that jointly encode the query and document 
+often yield strong improvements in precision at small       Evaluation metrics. We report standard retrieval 
+cutoffs [8]. Rather than fine-tuning a large transformer,   metrics: nDCG@10 and Recall@100. For binary 
+we train a supervised interaction reranker on               relevance, DCG@k is computed as Σ{i=1..k} 
+interpretable features. We generate training candidates     (2^{reli}-1)/log2(i+1), and nDCG@k is DCG@k 
+by taking the BM25 top-100 documents for each               normalized by the ideal DCG@k computed from the 
+training query. Each candidate is labeled 1 if it is in the ground-truth relevance set. Recall@k is the fraction of 
+qrels and 0 otherwise. We compute five features: (i)        relevant documents retrieved in the top-k. For evidence, 
+BM25 score, (ii) TF-IDF cosine similarity, (iii) Jaccard    we report: (i) exact sentence-match F1, treating each 
+overlap between query and document token sets, (iv)         selected sentence as an item and comparing to the 
+document length, and (v) query length. We fit a logistic    pseudo-gold sentence set; and (ii) token-level evidence 
+regression model with class_weight=balanced to handle       F1, computed by taking the multiset of tokens from all 
+label imbalance. At inference time, the reranker reranks    selected sentences and from all pseudo-gold sentences 
+the top-50 hybrid candidates. This setup captures the       and computing precision/recall by token overlap. 
+reranking principle—learning query–document                 Finally, we report refusal rate (fraction of queries 
+interactions—while remaining reproducible and               refused) and hallucination rate (fraction of answered 
+efficient.                                                  queries with no relevant abstract in top-10).
+
+
+Sentence splitting and candidate evidence selection.        Reproducibility. All experiments are run with a fixed 
+Abstracts are segmented into sentences using                random seed (42) for model initialization and sampling. 
+punctuation-based splitting (., ?, ! followed by            The dense retriever, reranker, and verifier 
+whitespace). We discard very short fragments (<20           hyperparameters are fully specified in Tables 3 and 4. 
+characters) and keep the remaining sentences. For each      Measured runtime breakdown is reported in Table 9.
+query, we take the top-10 retrieved abstracts (after 
+reranking) and select the top-3 sentences per abstract by   Feature computation for reranking. TF-IDF vectors are
+
+
+
+
+
+                                            Vol. 3(1), pp. 16-30, January 2023 
+                                                       [19]
+
+ Journal of Advanced Computing Systems (JACS)                                                    ISSN: 3066-3962
+
+
+
+
+
+computed using a standard TF-IDF vectorizer over the       Reporting measured runtimes. We report measured 
+corpus abstracts with a maximum vocabulary size of         runtimes for each pipeline stage on CPU (Table 9). 
+50,000 and the same tokenization used elsewhere. TF-       Timing includes (i) BM25 query evaluation over the 
+IDF cosine similarity for a query–document pair is         inverted index, (ii) dense encoding and similarity 
+computed as the normalized dot product between the         search, (iii) fusion, (iv) reranking, and (v) evidence 
+query TF-IDF vector and the document TF-IDF vector.        candidate selection plus verifier scoring. This 
+Jaccard overlap is computed between the query token        breakdown provides actionable guidance about where 
+set and the document token set. These features are         computation is spent in claim-aware scientific RAG.
+inexpensive and capture complementary evidence 
+signals: BM25 emphasizes exact matches and IDF             Implementation details. Dense embeddings are L2- 
+weighting, TF-IDF cosine provides a global similarity      normalized before similarity computation, and dot 
+view, and Jaccard overlap measures lexical coverage.       product is used for retrieval. For BM25, we use floating- 
+                                                           point accumulation and sort the top candidates by score. 
+Handling label imbalance. The SciFact qrels provide        For RRF fusion, we compute scores based only on ranks 
+very few positive documents per query, while candidate     and then sort fused candidates. For all metrics, ties are 
+sets contain many negatives. In the reranker training set  broken by the order induced by sorting. The entire 
+(BM25 top-100 per query), only about 1% of candidates      evaluation is performed on CPU; no approximate 
+are positive. We therefore use class_weight=balanced in    nearest-neighbor index is used because the corpus size 
+logistic regression to prevent the classifier from         is small enough for exact dot-product search.
+collapsing to the negative class. This setting yields a 
+stable reranker that improves early precision without      Hardware and software. Experiments are executed on a 
+requiring extensive hyperparameter tuning.                 CPU-only environment using Python with PyTorch for 
+                                                           the dense retriever and verifier, and scikit-learn for TF- 
+Candidate sizes and evaluation protocol. All retrieval     IDF and logistic regression. We report measured 
+methods produce a ranked list of up to 200 documents       runtimes in Table 9, which include end-to-end 
+per query. We evaluate nDCG at cutoffs up to 50 and        computation for the specified query set sizes.
+Recall up to 100. For hybrid fusion and reranking, we 
+fuse or rerank within the top-200 list and preserve        Alternative confidence signals. We choose the BM25 
+remaining candidates. This protocol mirrors common         top-1 score as the primary confidence signal because it 
+RAG usage: retrieve a medium-size candidate set (e.g.,     is directly available from the sparse retriever and does 
+100–200), then select a smaller set for the generator      not require additional model calibration. Other 
+(e.g., top-5 or top-10).                                   confidence signals are compatible with the same 
+                                                           abstention evaluation: (i) the margin between the top-1 
+Pseudo-gold evidence construction rationale. Because       and top-2 document scores, (ii) agreement between 
+the retrieval split does not expose sentence-level         sparse and dense rankings (e.g., whether both systems 
+rationales, we define pseudo-gold evidence sentences       rank the same document highly), (iii) the reranker 
+deterministically from the corpus using TF-IDF. This       probability assigned to the top candidate, and (iv) an 
+choice provides a stable evaluation target and avoids      entailment-style verifier score between the claim and 
+manual heuristics that vary across implementations. It     extracted evidence sentences. In large-scale 
+also corresponds to a common practical scenario: when      deployments, combining these signals and calibrating 
+sentence-level supervision is absent, systems often rely   them with held-out data can improve the reliability of 
+on similarity heuristics to select citations. Our evidence abstention decisions [16]. In this paper, we report the 
+evaluation therefore measures how well the pipeline        full threshold sweep for BM25 so that the tradeoff is 
+replicates or improves over a similarity-based target.     explicit and reproducible.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                          Fig. 1. Claim-aware scientific RAG pipeline used in this study.
+
+
+
+                                           Vol. 3(1), pp. 16-30, January 2023 
+                                                      [20]
+

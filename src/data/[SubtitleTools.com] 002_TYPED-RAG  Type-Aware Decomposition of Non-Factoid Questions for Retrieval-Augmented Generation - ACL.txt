@@ -1,0 +1,1750 @@
+﻿     TYPED-RAG: Type-Aware Decomposition of Non-Factoid Questions 
+
+                           for Retrieval-Augmented Generation
+
+
+
+  DongGeon Lee1* Ahjeong Park2* Hyeri Lee3 Hyeonseo Nam4 Yunho Maeng5, 6 
+                          1POSTECH 2Sookmyung Women’s University 
+
+                  3Independent Researcher 4KT 5Ewha Womans University 
+
+                               6LLM Experimental Lab, MODULABS
+
+                                  Correspondence: yunhomaeng@ewha.ac.kr
+
+
+
+
+                     Abstract                                         Factoid Question Answering
+                                                                                  When was Google founded?
+
+     Addressing non-factoid question answering                 Google was founded on September 4, 1998.
+     (NFQA) remains challenging due to its open- 
+     ended nature, diverse user intents, and need                   Non-Factoid Question Answering
+     for multi-aspect reasoning. These character-                          Which Portuguese wine is worth trying?
+     istics often reveal the limitations of conven-            Try Touriga Nacional, Vinho Verde, or a Tawny Port for distinct flavors.
+     tional retrieval-augmented generation (RAG) 
+     approaches. To overcome these challenges, we              Touriga Nacional or Vinho Verde are great choices.
+     propose TYPED-RAG, a framework for type-                  I’m not familiar enough with Portuguese wine to recommend one.
+     aware decomposition of non-factoid questions 
+     (NFQs) within the RAG paradigm. Specif-           Figure 1: Comparison of factoid question answering 
+     ically, TYPED-RAG first classifies an NFQ         (top) and non-factoid question answering (bottom). Fac- 
+     into a predefined type (e.g., Debate, Experi-     toid questions typically have a single correct answer, 
+     ence, Comparison). It then decomposes the         whereas non-factoid questions may admit multiple valid 
+     question into focused sub-queries, each focus-    answers.
+
+     ing on a single aspect. This decomposition 
+     enhances both retrieval relevance and answer        Non-factoid questions (NFQs) represent a fun- 
+
+     quality. By combining the results of these sub-   damentally different challenge from traditional fac- 
+
+     queries, TYPED-RAG produces more informa-         toid questions, as they require elaborate, interpre- 
+     tive and contextually aligned responses. Ad-      tive responses that integrate multiple perspectives 
+     ditionally, we construct Wiki-NFQA, a bench-      rather than retrieving single facts (Bolotova et al., 
+     mark dataset for NFQA covering a wide range       2022). These questions—encompassing compara- 
+     of NFQ types. Experiments show that TYPED- 
+     RAG consistently outperforms existing QA ap-      tive evaluations, personal experiences, and open- 
+     proaches based on LLMs or RAG methods,            ended discussions—reflect the rich, multifaceted 
+     validating the effectiveness of type-aware de-    nature of human information seeking. Figure 1 il- 
+
+     composition for improving both retrieval qual-    lustrates the key differences between factoid ques- 
+     ity and answer generation in NFQA. Our code       tions and NFQs, as well as their example answers.
+     and dataset are available on https://github.        Despite their prevalence in practical settings 
+     com/TeamNLP/Typed-RAG.                            (Yang and Alonso, 2024), current approaches to 
+
+                                                       non-factoid question answering (NFQA) face sig- 
+ 1 Introduction                                        nificant limitations. The core challenge lies in the 
+
+ Traditional and current question answering (QA)       inherent complexity and heterogeneity of NFQs, 
+ systems (Rajpurkar et al., 2016; Peters et al., 2018; which vary along multiple dimensions including 
+ Lewis et al., 2020; Ouyang et al., 2022; Zhang        question intent, aspect directionality, and degree of 
+ et al., 2024) have primarily addressed factoid        contrast between perspectives.
+ questions—queries seeking specific, verifiable in-      Existing methods fail to adequately address 
+ formation that yield concise, objective answers like  this diversity. Type-specific approaches to NFQA 
+“When was Google founded?”. However, real-world        (An et al., 2024)—methods that focus exclusively 
+ information needs extend far beyond such simple       on particular NFQ types—struggle to generalize 
+ factual queries.                                      across the full spectrum of NFQ types, whereas 
+                                                       retrieval-augmented generation (RAG) systems 
+    *These authors contributed equally to this work.   (Lewis et al., 2020; Izacard and Grave, 2021), de-
+
+                                                   129
+
+   Proceedings of the 1st Joint Workshop on Large Language Models and Structure Modeling (XLLM 2025), pages 129–152 
+                          August 1, 2025 ©2025 Association for Computational Linguistics
+
+spite improving contextuality, produce overly ho-     needs and current QA system capabilities, advanc- 
+
+mogeneous responses that lack the multi-faceted       ing the development of more adaptive and context- 
+depth essential for comprehensive answers. Ul-        sensitive QA technologies.
+
+timately, the fundamental challenge is adapting 
+retrieval and generation strategies to the specific   2 Related Work
+
+characteristics of each NFQ type.                     2.1 Non-Factoid Question Answering (NFQA)
+  To address these limitations, we propose TYPED-     Non-Factoid Question Taxonomy To address 
+RAG, a type-aware decomposition approach that 
+fundamentally reimagines NFQA within the RAG          the complexity of real-world QA, prior work has 
+                                                      developed detailed taxonomies for question types 
+paradigm. Our approach integrates question type 
+                                                      (Burger et al., 2003; Chaturvedi et al., 2014; Bolo- 
+classification directly into the RAG paradigm, en- 
+                                                      tova et al., 2022). Unlike factoid questions, which 
+abling tailored retrieval and generation strategies 
+                                                      seek concise factual answers, non-factoid ques- 
+for distinct NFQ types. The key innovation lies in 
+                                                      tions (NFQs) require subjective, multi-faceted re- 
+decomposing multi-aspect NFQs into single-aspect 
+sub-queries, allowing targeted retrieval for each as- sponses (Chaturvedi et al., 2014; Bolotova et al., 
+pect before synthesizing a comprehensive response.    2022). Bolotova et al. (2022) categorized NFQs 
+                                                      into six types: Evidence-based, Comparison, 
+This decomposition approach ensures that gener- 
+                                                      Experience, Reason, Instruction, and Debate. 
+ated answers align with user intent while capturing 
+the full complexity of the question.                  Recently, Mishra et al. (2025) emphasized criti- 
+                                                      cal challenges faced by LLM-based QA systems 
+  In order to assess the performance of TYPED-        when handling NFQs, particularly those requiring 
+RAG, we evaluate it on Wiki-NFQA, a new bench-        in-depth reasoning or nuanced debate, illustrated 
+mark dataset derived from Wikipedia that encom-       through practical examples such as detailed de- 
+passes a broad spectrum of NFQ types. Our results     scriptive questions (e.g., “How was the construc- 
+demonstrate that TYPED-RAG significantly out-         tion of the Taj Mahal perceived by the citizens of 
+performs baseline systems, including standard ap- 
+                                                      Agra in the 17th century?”). Their work also high- 
+proaches using LLMs and RAG, in handling NFQ          lighted specific application contexts where robust 
+complexity and delivering nuanced, intent-aligned     NFQA systems are vital, including voice assistants 
+answers.                                              like Amazon Alexa (Hashemi et al., 2020) and 
+  Our main contributions are as follows:              web forums frequently hosting user-generated de- 
+
+• We propose TYPED-RAG, a novel framework             scriptive queries (Bajaj et al., 2016). In contrast 
+
+  for type-aware decomposition of non-factoid         to earlier approaches that target individual NFQ 
+
+  questions that enhances RAG-based NFQA by           types, our method provides a unified framework to 
+  integrating question type classification with tar-  handle all categories effectively.
+
+  geted decomposition strategies.                     Evaluation Metrics Traditional metrics—such 
+• We develop retrieval and generation strategies      as ROUGE or BERTScore (Zhang et al., 2020)— 
+  specifically optimized for different NFQ types,     often fall short in capturing the semantic richness 
+  enabling more effective handling of complex and     and nuanced quality of NFQA outputs. To over- 
+  diverse user queries.                               come these limitations, Yang et al. (2024) intro- 
+• We release the Wiki-NFQA dataset, providing         duced LINKAGE, a listwise ranking framework 
+
+  a comprehensive benchmark for evaluating QA         that uses an LLM as a scorer to rank candidate 
+
+  systems on non-factoid questions and facilitating   answers against quality-ordered references. LINK- 
+  future NFQA research.                               AGE shows stronger correlation with human judg- 
+
+• We demonstrate through extensive experiments        ments and outperforms conventional metrics, high- 
+
+  that TYPED-RAG significantly outperforms            lighting its suitability for NFQA evaluation.
+
+  baseline models, validating the effectiveness of 
+  type-aware decomposition in generating contex-      2.2 Retrieval-Augmented Generation (RAG)
+  tually appropriate and high-quality answers.        Retrieval-augmented generation (RAG) improves 
+
+                                                      the quality of LLM responses by incorporating 
+
+  By addressing the unique challenges of NFQA         external documents, improving factual accuracy 
+through type-aware decomposition, our work            and contextual relevance (Lewis et al., 2020; Izac- 
+
+bridges the gap between complex user information      ard and Grave, 2021). However, the quality of
+
+                                                  130
+
+      (a) Evidence-based
+
+
+
+
+
+
+      Non-Factoid                                                                                                             K References
+                                                                       Retriever                                                                                                       Generator                                                      Responses
+            Question
+
+
+
+
+
+
+      (b) Comparison                                                                                                                                                                                                                                                                                                                    Top-K Reranked 
+
+                                                                                                                                                                                                                                                           N x K References                                                                   References
+
+
+
+      Non-Factoid                                                      Multi-aspect                                                                     Sngeaspect   gpc
+                                                                                                                                               N il-
+                                                                                                                                                                        Quy                                                         Retriever                                                            Reranker                                                             Generator                                                         Responses
+            Question                                                   Decomposer                                                                             QueriesQuery
+
+
+
+
+
+
+
+      (c) Experience
+
+
+
+
+
+      Non-Factoid                                                      Multi-aspect                                                                           neasec gpc 
+                                                                                                                                               N Single-aspect
+                                                                                                                                                                        Quy                                                                                                                              Reranker                                                             Generator                                                         Responses
+            Question                                                   Decomposer                                                                                    Query
+                                                                                                                                                              Queries
+
+                                                                                                                                                                                                                                                                                                                                              K Reranked
+                                                                                                                                                                                                                                                K References 
+                                                                                                                                                                                                                                                                                                                                              References
+
+                                                                                                                                                                                       Retriever
+
+
+
+
+
+
+      (d) Reason / Instruction / Debate
+
+                                                                                                                                                                                                                                                                                                                                                                                                                    Answer 
+
+
+
+                                                                                                                                                                                                                                                                                                                 N                                                                                          Aggregator
+                                                                                                                                                                                                                                                      K References
+
+
+
+      Non-Factoid                                                      Multi-aspect                                                                     Sngeaspect   gpc
+                                                                                                                                               N il-
+                                                                                                                                                                        Quy                                                         Retriever                                                   Generator                                                                                                                                       Responses
+            Question                                                                                                                                                 Query                                                                                                                                                                                  N Responses
+                                                                       Decomposer                                                                             Queries
+
+
+
+
+
+
+
+
+
+Figure 2: Overview of TYPED-RAG. Non-factoid questions (NFQs) are first classified by a pretrained Type 
+
+
+
+
+Classifier and then processed according to their type. A Multi-aspect Decomposer and Answer Aggregator address 
+
+
+
+
+each type’s specific requirements using LLMs with tailored prompts. See Appendix A.4 and Figure 17 for prompt 
+
+
+
+details and a complete illustration.
+
+
+
+
+
+
+
+
+
+
+
+
+
+RAG outputs critically depends on the retrieval                                                                                                                                                                                                                       NFQs are classified into one of six types using a 
+
+
+
+
+step: irrelevant or noisy documents can exacer-                                                                                                                                                                                                            pre-trained Type Classifier (Bolotova et al., 2022). 
+
+
+
+
+bate hallucinations (Huang et al., 2023; Lee and                                                                                                                                                                                                           Subsequently, queries are preprocessed through 
+
+
+
+
+Yu, 2025). Recent advances apply query rewriting                                                                                                                                                                                                           the Multi-aspect Decomposer, where each type’s 
+
+
+
+
+and multi-hop decomposition to enrich retrieved                                                                                                                                                                                                            characteristics and the underlying intent of the 
+
+
+
+
+contexts (Rackauckas, 2024; Chan et al., 2024),                                                                                                                                                                                                            questions are considered. The Multi-aspect De- 
+
+
+
+
+and adaptive retrieval strategies that assess query-                                                                                                                                                                                                       composer primarily consists of two modules: the 
+
+
+
+
+document relevance before the generation process                                                                                                                                                                                                           Single-aspect Query Generator and the Keyword 
+
+
+
+
+(Jeong et al., 2024; Yan et al., 2024; Asai et al.,                                                                                                                                                                                                        Extractor. These modules operate selectively based 
+
+
+
+
+2024).                                                                                                                                                                                                                                                     on the question type and perspective, leveraging 
+
+
+
+
+            Despite these developments, the application of                                                                                                                                                                                                 few-shot learning and prompt engineering tech- 
+
+
+
+
+RAG to NFQA remains underexplored. For ex-                                                                                                                                                                                                                 niques to effectively transform queries according 
+
+
+
+
+ample, Deng et al. (2024) proposed a graph-based                                                                                                                                                                                                           to their respective categories. The decomposed 
+
+
+
+
+multi-hop approach for NFQA, but it neither lever-                                                                                                                                                                                                         queries are then processed by one or multiple re- 
+
+
+
+
+ages large-scale pretrained LLMs nor employs dy-                                                                                                                                                                                                           trievers to retrieve highly relevant passages. Op- 
+
+
+
+
+namic retrieval. Likewise, An et al. (2024) inte-                                                                                                                                                                                                          tionally, the retrieved passages may be re-ranked 
+
+
+
+
+grated logic-based threading with RAG for How-                                                                                                                                                                                                             using a reranker to enhance the quality of results.
+
+
+
+
+To questions, yet their method does not generalize 
+                                                                                                                                                                                                                                                                      Based on the retrieved information, the genera- 
+
+
+
+across all NFQ types. Our work bridges this gap 
+                                                                                                                                                                                                                                                           tor produces the final answers. If multiple candi- 
+
+
+
+by combining type-specific decomposition with 
+                                                                                                                                                                                                                                                           date answers are available, the Answer Aggregator 
+
+
+
+adaptive retrieval and generation in a single RAG 
+                                                                                                                                                                                                                                                           integrates these candidates to form a unified re- 
+
+
+
+framework.
+                                                                                                                                                                                                                                                           sponse. This process is structured based on prompt 
+
+
+
+
+                                                                                                                                                                                                                                                           engineering. Detailed prompt configurations for 
+
+
+3 Method
+
+                                                                                                                                                                                                                                                           each module are presented in Appendix A.4.
+
+
+
+
+
+
+In this section, we introduce TYPED-RAG, a novel                                                                                                                                                                                                                      As previously discussed, NFQs inherently in- 
+
+
+
+
+RAG pipeline designed specifically for non-factoid                                                                                                                                                                                                         volve multiple perspectives, making them challeng- 
+
+
+
+
+question (NFQ) types. Figure 2 visually illustrates                                                                                                                                                                                                        ing to handle effectively using conventional RAG 
+
+
+
+
+the overall processing mechanisms of the Multi-                                                                                                                                                                                                            approaches. Considering these distinct characteris- 
+
+
+
+
+aspect Decomposer and the Answer Aggregator                                                                                                                                                                                                                tics, we propose a type-aware pipeline specifically 
+
+
+
+
+for each NFQ type.                                                                                                                                                                                                                                         tailored to NFQs, capable of generating responses
+
+
+
+
+
+
+                                                                                                                                                                                                                                           131
+
+ NFQ Type             Example of Non-Factoid Question
+
+
+ Evidence-based “How does sterilisation help to keep the money flow even?”
+
+ Comparison           “what is the difference between dysphagia and odynophagia”
+
+ Experience           “What are some of the best Portuguese wines?”
+
+                      “Kresy, which roughly was a part of the land beyond the so-called Curson Line, 
+ Reason
+                        was drawn for what reason?”
+
+ Instruction          “How can you find a lodge to ask to be a member of?”
+
+                      “I Can See Your Voice, a reality show from South Korea, offers what kind of 
+ Debate
+                        performers a chance to make their dreams of stardom a reality?”
+
+
+        Table 1: Example non-factoid questions in the Wiki-NFQA dataset, highlighting each NFQ type.
+
+
+
+that accurately reflect user intent and address the    sizing differences or superiority. Consequently, 
+inherent complexity of these questions.                Comparison type questions inherently involve mul- 
+   The subsequent subsections elaborate on the def-    tiple aspects.
+
+initions of each NFQ type and the corresponding          Thus, a Multi-aspect Decomposer is required 
+detailed processing strategies.                        for Comparison type questions. Initially, a Key- 
+
+                                                       word Extractor identifies the purpose of compari- 
+3.1 Evidence-based                                     son (compare_type) and the items being compared 
+Evidence-based type questions aim to clarify the       (keywords_list). The purpose of the comparison is 
+characteristics or definitions of specific concepts,   predefined as one of three types: difference, sim- 
+objects, or events. These questions require precise    ilarity, or superior. These types are explicitly ex- 
+and reliable factual information. These questions      tracted from the question to determine the scope 
+inherently have a single aspect, eliminating the       of the comparison. Detailed prompt templates and 
+need for complex contextual reasoning or multi-        examples used in this process are described in Ap- 
+aspect decomposition. The intent behind these          pendix A.4.1.
+
+questions is to obtain clear and concise explana-        Subsequently, the retriever searches for docu- 
+tions grounded in evidence, resulting in responses     ments related to each keyword, eliminates redun- 
+consistently centered around a single aspect.          dant results, and reranks the remaining documents 
+   Accordingly, a straightforward RAG approach         based on relevance. Finally, the generator syn- 
+is applied to Evidence-based type questions. The       thesizes the information to produce a balanced re- 
+retriever utilizes the original question as a query to sponse aligned with the comparison purpose. Col- 
+search relevant documents, and the generator then      lecting and integrating information across various 
+produces responses based directly on these docu-       comparison criteria and perspectives is crucial for 
+ments. It is essential to maintain a clear and con-    accurately addressing user intent.
+
+cise information flow without considering multiple 
+perspectives, thereby ensuring straightforward and     3.3 Experience
+accurate answers.                                      Experience type questions seek advice, recom- 
+
+                                                       mendations, or personal insights, with responses 
+3.2 Comparison                                         based primarily on individual experiences. These 
+
+Comparison type questions aim to identify dif-         questions naturally involve multiple aspects, and 
+ferences, similarities, or superiority among two       answers can vary significantly due to subjective dif- 
+or more items. These questions can have differ-        ferences among respondents. Thus, clearly under- 
+
+ent intentions and must be tailored to the purpose     standing the user’s intent and defining key perspec- 
+and targets of the comparison. Comparison type         tives is essential to provide informative answers 
+questions can be broadly classified into two cate-     encompassing diverse opinions and experiences.
+
+gories based on intent: related aspects, focusing        Similar to Comparison type questions, 
+on similarities, and contrasting aspects, empha-       Experience type questions require multi-aspect
+
+                                                   132
+
+  NFQ Type         NQ-NF    SQD-NF     TQA-NF     2WMHQA-NF        HQA-NF     MSQ-NF             Total
+
+  Evidence-based     99        130        251           10            22         43      555 (58.73%)
+  Comparison          5        18          4            0              8          1         36 (3.81%)
+  Experience          0        20          8            1             10          2         41 (4.34%)
+  Reason              19       85         23            55            15         21      218 (23.07%)
+  Instruction         2        21          3            8             4          11         49 (5.19%)
+  Debate              1        26          7            5              3         4          46 (4.87%)
+
+  Total              126       300        296           79            62         82               945
+
+
+                            Table 2: Wiki-NFQA dataset statistics by NFQ type.
+
+
+
+consideration; however, the focus is not on           type questions. While various procedures may ex- 
+comparisons based on specific features or cri-        ist, their fundamental structure or concepts often 
+teria but rather on reflecting broader and more       remain interconnected.
+comprehensive experiences and diverse opinions.         For both Reason and Instruction type ques- 
+Therefore, Experience type questions require          tions, a Multi-aspect Decomposer is applied. Ini- 
+multi-aspect decomposition.                           tially, a Single-aspect Query Generator decom- 
+   Initially, the Keyword Extractor identifies the    poses the original query into separate single-aspect 
+primary topics that users seek experiences about      queries. The retriever and generator then pro- 
+and extracts key entities reflecting the question’s   cess each query individually, producing separate 
+intent. Specific examples of the prompts used in      responses. An Answer Aggregator subsequently 
+this process are detailed in Appendix A.4.2. Fol-     integrates these responses to deliver a clear, sys- 
+lowing this step, the retriever searches for related  tematically organized final answer. Examples of 
+documents using these extracted keywords. The re-     the prompts used in this process are detailed in 
+trieved documents are then re-ranked according to     Appendix A.4.3.
+their similarity to the extracted keywords. Finally, 
+the generator produces an optimized response by       3.5 Debate
+synthesizing information that aligns with the user’s  Debate type questions focus on controversial top- 
+intent and incorporates diverse perspectives. This    ics and aim to explore and reflect multiple per- 
+ensures the response effectively meets the user’s     spectives, especially opposing perspectives. These 
+expectations.                                         questions inherently possess multiple perspectives 
+                                                      and require the inclusion of contrasting arguments 
+3.4 Reason/Instruction                                and perspectives, as subjective positions may vary 
+Reason and Instruction type questions both aim        according to underlying assumptions and perspec- 
+to provide information necessary for understanding    tives, unlike factual questions.
+phenomena or solving problems, but they differ          To effectively respond to Debate type questions, 
+significantly in intent and response approach.        it is essential to fairly represent the logic of each 
+   The purpose of Reason type questions is to iden-   opposing perspective and generate unbiased, bal- 
+tify the causes of phenomena or events. These         anced responses. Thus, a Multi-aspect Decom- 
+questions require multi-faceted consideration be-     poser breaks down the question into debate topics 
+cause explanations can vary depending on contex-      and diverse opinions. The Single-aspect Query 
+tual factors and conditions. Different assumptions    Generator then formulates individual queries for 
+and conditions may yield multiple possible expla-     each opinion. The retriever and generator pro- 
+nations, resulting in responses often including con-  cess each query separately, producing individual 
+trasting or conflicting information.                  responses. Finally, an LLM with a debate media- 
+   In contrast, Instruction type questions focus      tor persona (Liang et al., 2024) synthesizes these 
+on procedural steps or methodologies. Although        diverse perspectives, generating a balanced final 
+the procedures or methods can vary based on spe-      response from a mediator’s perspective. Detailed 
+cific goals or requirements and thus involve mul-     prompts applied in the Single-aspect Query Gener- 
+tiple aspects, the responses tend to align similarly  ator and Debate Mediator processes are outlined in 
+rather than diverging significantly, unlike Reason    Appendix A.4.4. This approach ensures responses
+
+                                                  133
+
+    Prompt Template for LINKAGE
+
+
+
+    Please impartially rank the given candidate answer to a non-factoid question accurately within the 
+
+    reference answer list, which are ranked in descending order of quality. The top answers are of the 
+
+    highest quality, while those at the bottom may be poor or unrelated.
+
+    Determine the ranking of the given candidate answer within the provided reference answer list. For 
+
+    instance, if it outperforms all references, output [[1]]. If it’s deemed inferior to all four references, 
+
+    output [[4]].
+
+    Your response must strictly following this format: "[[2]]" if candidate answer could rank 2nd. 
+
+    Below are the user’s question, reference answer list, and the candidate answer. 
+
+    Question:{question}
+
+    Reference answer list:{reference_answers}
+
+    Candidate answer:{candidate_answer}
+
+
+
+
+Figure 3: The LINKAGE prompt template from Yang et al. (2024) used to rank candidate answers in our evaluation 
+
+of TYPED-RAG and the baselines.
+
+
+
+
+
+
+fairly and transparently reflect diverse perspectives,     prompt PL, assigns rankci based on each candi- 
+
+enabling comprehensive and balanced information            date’s position within Ri. The complete LINK- 
+
+delivery suitable for Debate type questions.               AGE prompt template is shown in Figure 3.
+
+
+
+4 Experimental Setup                                       Ranking Metrics To quantify LINKAGE rank- 
+
+                                                           ings, we employ two complementary metrics: 
+
+4.1 Model                                                  Mean Reciprocal Rank (MRR) (Voorhees and Tice, 
+
+We compare our TYPED-RAG with LLM- and                     2000) and Mean Percentile Rank (MPR):
+
+
+RAG-based QA systems as baselines. In our ex- 
+
+periments, we use a black-box LLM and two open-                         1  ~N      1
+                                                             MRR =                      ,                      (3)
+weight LLMs with different numbers of parame-                          N       rankci
+                                                                           i=1
+ters: (i) Llama-3.2-3B-Instruct (Llama-3.2-3B), (ii)                        N                      ~
+Mistral-7B-Instruct-v0.2 (Mistral-7B; Jiang et al.,          MPR =      1  ~(    1    rankci − 1 × 100. (4) 
+2023), and (iii) GPT-4o-mini-2024-07-18 (GPT-4o                        N                  |Ri|
+                                                                           i=1
+mini).
+
+  All inputs to the LLMs (including the RAG gen-           MRR measures how close candidate answers rank 
+
+erator) are formatted using prompt templates. The          to the top of the list, with higher values indicat- 
+
+prompt templates used in our experiments are pro-          ing better performance. MPR converts each rank 
+
+vided in Appendix A.3.                                     into a percentile, reflecting the candidate’s rela- 
+
+                                                           tive position within its reference list; higher MPR 
+
+4.2 Listwise Ranking Evaluation (LINKAGE)                  scores denote superior overall ranking across all 
+
+
+To evaluate non-factoid question answering                 positions. Together, MRR highlights top-answer 
+
+(NFQA) systems, we adopt LINKAGE (Yang et al.,             accuracy, while MPR provides insight into perfor- 
+
+2024), a listwise ranking framework designed for           mance across the entire ranking spectrum.
+
+NFQA. LINKAGE orders each candidate answer 
+                                                           4.3 Dataset Construction
+by comparing its quality against a reference list of 
+
+answers, defined formally as:                              To test the NFQA methods, we curate the Wiki- 
+
+                                                           NFQA dataset, a specialized resource tailored for 
+
+               Ri = {ri1,ri2, . . . , rin},         (1)    NFQA. It is derived from existing Wikipedia-based 
+
+
+          rankci = LLM(PL,qi,ci,Ri ).               (2)    datasets: Natural Questions (NQ; Kwiatkowski 
+
+                                                           et al., 2019), SQuAD (SQD; Rajpurkar et al., 
+
+Here, qi is the i-th question, ci is the candidate         2016), TriviaQA (TQA; Joshi et al., 2017), 2Wiki- 
+
+answer under evaluation, and Ri is the set of refer-       MultiHopQA (2WMH; Ho et al., 2020), HotpotQA 
+
+ence answers {rik} sorted from highest to lowest           (HQA; Yang et al., 2018), MuSiQue (MSQ; Trivedi 
+
+quality. The scorer LLM, guided by the LINKAGE             et al., 2022).
+
+
+                                                       134
+
+ Model         Scorer LLM   Methods                           Wiki-NFQA Dataset
+                                          NQ-NF   SQD-NF    TQA-NF    2WMH-NF     HQA-NF    MSQ-NF
+
+                            LLM           0.5893   0.5119    0.6191     0.3565     0.4825     0.4262
+               Mistral-7B   RAG           0.5294   0.4944    0.5470     0.4150     0.4530     0.4047
+ Llama-3.2-3B               TYPED-RAG     0.7659   0.6493    0.7061     0.4544     0.5624     0.5356
+                            LLM           0.4934   0.4506    0.5380     0.3070     0.3669     0.2917
+               GPT-4o mini  RAG           0.4187   0.3553    0.4586     0.2859     0.2957     0.2866
+                            TYPED-RAG     0.8366   0.7139    0.7013     0.3692     0.5470     0.4482
+
+                            LLM           0.6356   0.5450    0.6363     0.4821     0.5255     0.5081
+               Mistral-7B   RAG           0.5635   0.5069    0.6233     0.4789     0.5323     0.4438
+ Mistral-7B                 TYPED-RAG     0.7103   0.6333    0.6709     0.4747     0.6035     0.4512
+                            LLM           0.4656   0.4222    0.5921     0.3175     0.3965     0.3384
+               GPT-4o mini  RAG           0.4411   0.3817    0.5450     0.2890     0.3562     0.3079
+                            TYPED-RAG     0.8413   0.7444    0.7767     0.3987     0.6653     0.4929
+
+Table 3: Evaluation on the Wiki-NFQA dataset comparing various language models, scorer LLMs, and methods 
+using Mean Reciprocal Rank (MRR). Answers were ranked with LINKAGE (Yang et al., 2024) and evaluated by 
+MRR.
+
+
+
+Filtering Non-Factoid Questions Through a            Comparison type questions seek distinctions be- 
+systematic filtering process, we extract non-factoid tween concepts. Experience type questions solicit 
+questions, then generate high-quality reference an-  subjective opinions or recommendations, while 
+swers to ensure the dataset’s suitability for NFQA   Reason type questions aim to uncover the ratio- 
+evaluation.                                          nale behind events or concepts. Instruction type 
+  We use the nf-cats1 (Bolotova et al., 2022), a     questions request procedural guidance, and Debate 
+RoBERTa-based pre-trained NFQ category clas-         type questions involve discussions on controversial 
+sifier, to extract NFQs from existing Wikipedia-     or interpretive topics.
+based datasets. Since it categorizes questions into 
+factoid and non-factoid types, we only retain those  5 Experimental Results
+classified as non-factoid for further processing. To 
+ensure a more rigorously curated dataset, we fil-    We evaluate TYPED-RAG on the Wiki-NFQA 
+ter the data using heuristics based on the question  dataset across all NFQ categories and model config- 
+patterns outlined in the NFQ taxonomy proposed       urations. As shown in Table 3 (MRR) and Figure 
+by Bolotova et al. (2022). Table 2 presents the      4 (MPR), TYPED-RAG consistently outperforms 
+statistics for the Wiki-NFQA dataset.                both LLM- and RAG-based baselines. These met- 
+                                                     rics demonstrate that our approach not only ele- 
+Reference Answers Generation Since these             vates the ranking of generated answers but also 
+datasets only have a single-grade ground truth an-   improves their relative quality. Scorer LLMs uni- 
+swer, we generate diverse reference answers of       formly rate TYPED-RAG’s responses as more rele- 
+varying quality for LINKAGE evaluation, as de-       vant and comprehensive. Representative examples 
+scribed in Yang et al. (2024). After constructing    of TYPED-RAG’s outputs for each non-factoid 
+the reference answers, we use the GPT-4o-2024-       question type are provided in Appendix D.
+11-20 to annotate their quality level. Prompt details 
+about generating reference answers are provided      5.1 Impact of Scorer LLMs and Base Models
+in Appendix A.1, and A.2.                            The performance of all methods depends on the 
+Examples of the Wiki-NFQA Dataset Table 1            choice of scorer LLM and base model. Since each 
+provides examples of questions that represent each   LLM evaluates responses using its own learned 
+type of NFQ in the Wiki-NFQA dataset.                criteria and internal representations, scores from 
+  The Evidence-based type questions require          different scorers should not be compared directly. 
+answers grounded in verifiable sources, while        Instead, performance comparisons are most mean- 
+                                                     ingful when considering the relative ranking of 
+  1https://huggingface.co/Lurunchik/nf-cats          methods under the same scorer.
+
+                                                  135
+
+           EVIDENCE-BASED                          COMPARISON                             EXPERIENCE
+75                                     75                                    60
+50                                     50                                    40
+25                                     25                                    20
+  0    LLMRAGTyped-RAG                  0    LLMRAGTyped-RAG                  0    LLMRAGTyped-RAG
+                REASON                             INSTRUCTION                              DEBATE
+60                                     60                                    60
+40                                     40                                    40
+20                                     20                                    20
+  0    LLMRAGTyped-RAG                  0    LLMRAGTyped-RAG                  0    LLMRAGTyped-RAG
+                Model: Llama-3.2-3B, Scorer: Mistral-7B           Model: Mistral-7B, Scorer: Mistral-7B
+                Model: Llama-3.2-3B, Scorer: GPT-4o mini          Model: Mistral-7B, Scorer: GPT-4o mini
+
+Figure 4: Comparison of Mean Percentile Rank (MPR) for LLMs, RAGs, and TYPED-RAG across six NFQ 
+categories in the Wiki-NFQA dataset. Results are shown for two model setups (Llama-3.2-3B and Mistral-7B) and 
+two scorer LLMs (Mistral-7B and GPT-4o mini); the y-axis displays MPR (%), where higher values indicate better 
+performance.
+
+
+  As reported in Table 3 and Figure 4, scores gen-         6 Conclusion
+erally decrease when switching from Mistral-7B 
+to GPT-4o mini as the scorer. This trend likely            In this paper, we introduced TYPED-RAG, a novel 
+stems from GPT-4o mini’s greater sophistication            RAG-based framework for non-factoid question 
+and stricter evaluation standards, which penalize          answering (NFQA) that incorporates type-aware 
+even minor inconsistencies or lack of depth. This          multi-aspect decomposition. By first classifying 
+pattern holds across all base models and meth-             each NFQ into a specific category and then decom- 
+ods, underscoring that more powerful scorers apply         posing it into focused sub-queries, TYPED-RAG 
+more stringent criteria. Notably, despite the overall      enables targeted retrieval and answer generation 
+score reductions, TYPED-RAG retains a clear ad-            for each aspect. The retrieved sub-responses are 
+vantage over both LLM- and RAG-based baselines,            aggregated to produce comprehensive, nuanced an- 
+demonstrating its robustness to changes in scorer          swers that better address the diverse requirements 
+strictness.                                                of non-factoid questions.
+                                                              To support evaluation, we also curated Wiki- 
+5.2 Limitations of RAG and Benefits of                     NFQA, a benchmark dataset covering a wide range 
+      TYPED-RAG                                            of NFQ types. Experimental results on Wiki- 
+Our experiments also reveal that RAG-based meth-           NFQA dataset show that TYPED-RAG consis- 
+ods underperform direct LLM-based generation               tently outperforms both LLM-only and standard 
+(see Table 3 and Figure 4). We attribute this              RAG baselines across all question types and scorer 
+shortfall to the noise introduced by retrieved             LLM settings. These findings validate the effec- 
+factual information, which can hinder response             tiveness and robustness of type-aware multi-aspect 
+generation in NFQA tasks. TYPED-RAG ad-                    decomposition in enhancing both retrieval quality 
+dresses this challenge through a multi-aspect              and answer relevance for NFQA.
+decomposition strategy that structures retrieval              Future work could explore extending TYPED- 
+around the distinct facets of non-factoid ques-            RAG to incorporate more fine-grained question 
+tions. By reducing irrelevant noise and ensur-             types and further refine the decomposition strate- 
+ing more focused retrieval, TYPED-RAG consis-              gies. Additionally, applying our approach to other 
+tently outperforms both RAG and LLM-only ap-               specific domains or applying fine-tuning meth- 
+proaches—particularly on reasoning-intensive sub-          ods and integrating it with more sophisticated re- 
+sets—thereby enhancing the overall quality of gen-         trieval mechanisms could further improve the per- 
+erated answers.                                            formance and adaptability of NFQA systems.
+                                                       136
+
+Limitations                                            ing to retrieve, generate, and critique through self- 
+                                                       reflection. In The Twelfth International Conference 
+Our work is the first to introduce RAG to NFQA,        on Learning Representations, ICLR 2024, Vienna, 
+
+but it has several limitations.                        Austria, May 7-11, 2024.
+
+   A key limitation is the absence of a direct com- Payal Bajaj, Daniel Campos, Nick Craswell, Li Deng, 
+parison between TYPED-RAG and existing query           Jianfeng Gao, Xiaodong Liu, Rangan Majumder, 
+rewriting and decomposition methodologies. Al-         Andrew McNamara, Bhaskar Mitra, Tri Nguyen, 
+though TYPED-RAG provides a structured ap-             et al. 2016. MS MARCO: A human generated ma- 
+proach to these tasks, its performance relative to     chine reading comprehension dataset. arXiv preprint 
+                                                       arXiv:1611.09268.
+other techniques remains unexplored. Though vari- 
+
+ous query rewriting and decomposition techniques    Valeriia Bolotova, Vladislav Blinov, Falk Scholer, 
+have been proposed to improve retrieval quality,       W. Bruce Croft, and Mark Sanderson. 2022. A non- 
+                                                       factoid question-answering taxonomy. In Proceed- 
+this study does not empirically evaluate the effec-    ings of the 45th International ACM SIGIR Confer- 
+tiveness of query reformulation, retrieval relevance,  ence on Research and Development in Information 
+or computational overhead of TYPED-RAG rela-           Retrieval, page 1196–1207.
+
+tive to these approaches. A systematic comparison 
+                                                    John Burger, Claire Cardie, Vinay Chaudhri, Robert 
+with these methods would provide a clearer under-      Gaizauskas, Sanda Harabagiu, David Israel, Chris- 
+standing of TYPED-RAG’s advantages and limita-         tian Jacquemin, Chin-Yew Lin, Steve Maiorano, 
+
+tions. Future work should incorporate benchmark        George Miller, Dan Moldovan, Bill Ogden, John 
+evaluations against these established techniques to    Prager, Ellen Riloff, Amit Singhal, Rohini Shrihari, 
+                                                       Tomek Strazalkowski, Ellen Voorhees, and Ralph 
+better position TYPED-RAG within the landscape         Weishedel. 2003. Issues, tasks and program struc- 
+of query rewriting and decomposition research.         tures to roadmap research in question & answering 
+   Another limitation of our evaluation setup is that  (Q&A). In Document Understanding Conferences 
+we use the same model to assess the quality of its     Roadmapping Documents, pages 1–35.
+
+generated responses. This self-evaluation approach  Chi-Min Chan, Chunpu Xu, Ruibin Yuan, Hongyin Luo, 
+may introduce bias because the model may strug-        Wei Xue, Yike Guo, and Jie Fu. 2024. RQ-RAG: 
+
+gle to distinguish differences in quality among the    Learning to refine queries for retrieval augmented 
+answers it produced. To mitigate this issue, future    generation. In 1st Conference on Language Model- 
+                                                       ing.
+work could explore using stronger LLMs, human 
+
+assessments, or ensemble scoring methods for eval-  Snigdha Chaturvedi, Vittorio Castelli, Radu Florian, 
+
+uation. Adopting these strategies would improve        Ramesh M. Nallapati, and Hema Raghavan. 2014. 
+the reliability of quality assessments and reduce      Joint question clustering and relevance prediction 
+                                                       for open domain non-factoid question answering. In 
+potential biases in our evaluation framework.          Proceedings of the 23rd International Conference on 
+                                                       World Wide Web, page 503–514.
+Acknowledgments
+
+                                                    Yang Deng, Wenxuan Zhang, Weiwen Xu, Ying 
+This research was supported by Brian Impact Foun-      Shen, and Wai Lam. 2024. Nonfactoid question 
+
+dation, a non-profit organization dedicated to the     answering as query-focused summarization with 
+advancement of science and technology for all.         graph-enhanced multihop inference. IEEE Trans- 
+                                                       actions on Neural Networks and Learning Systems, 
+A prior version of this work was presented in a        35(8):11231–11245.
+non-archival form at the NAACL 2025 Student 
+
+Research Workshop.                                  Helia Hashemi, Mohammad Aliannejadi, Hamed Za- 
+                                                       mani, and W. Bruce Croft. 2020. ANTIQUE: A 
+                                                       non-factoid question answering benchmark. In Ad- 
+References                                             vances in Information Retrieval - 42nd European 
+                                                       Conference on IR Research, ECIR 2020, Lisbon, Por- 
+Kaikai An, Fangkai Yang, Liqun Li, Junting Lu,         tugal, April 14-17, 2020, Proceedings, Part II, vol- 
+   Sitao Cheng, Lu Wang, Pu Zhao, Lele Cao, Qing-      ume 12036 of Lecture Notes in Computer Science, 
+   wei Lin, Saravan Rajmohan, Dongmei Zhang, and       pages 166–173.
+   Qi Zhang. 2024. Thread: A logic-based data orga- 
+   nization paradigm for how-to question answering  Xanh Ho, Anh-Khoa Duong Nguyen, Saku Sugawara, 
+   with retrieval augmented generation. arXiv preprint and Akiko Aizawa. 2020. Constructing a multi- 
+   arXiv:2406.13372.                                   hop QA dataset for comprehensive evaluation of 
+                                                       reasoning steps. In Proceedings of the 28th Inter- 
+Akari Asai, Zeqiu Wu, Yizhong Wang, Avirup Sil,        national Conference on Computational Linguistics, 
+   and Hannaneh Hajishirzi. 2024. Self-RAG: Learn-     pages 6609–6625.
+
+
+                                                 137
+
+Lei Huang, Weijiang Yu, Weitao Ma, Weihong Zhong,       DongGeon Lee and Hwanjo Yu. 2025. REFIND: 
+   Zhangyin Feng, Haotian Wang, Qianglong Chen,           Retrieval-augmented factuality hallucination detec- 
+   Weihua Peng, Xiaocheng Feng, Bing Qin, and Ting        tion in large language models. arXiv preprint 
+   Liu. 2023. A survey on hallucination in large lan-     arXiv:2502.13622.
+   guage models: Principles, taxonomy, challenges, and 
+   open questions. arXiv preprint arXiv:2311.05232.     Patrick S. H. Lewis, Ethan Perez, Aleksandra Pik- 
+                                                          tus, Fabio Petroni, Vladimir Karpukhin, Naman 
+Gautier Izacard and Edouard Grave. 2021. Leveraging       Goyal, Heinrich Küttler, Mike Lewis, Wen-tau Yih, 
+   passage retrieval with generative models for open do-  Tim Rocktäschel, Sebastian Riedel, and Douwe 
+   main question answering. In Proceedings of the 16th    Kiela. 2020. Retrieval-augmented generation for 
+   Conference of the European Chapter of the Associ-      knowledge-intensive NLP tasks. In Advances in 
+   ation for Computational Linguistics: Main Volume,      Neural Information Processing Systems 33, pages 
+   pages 874–880.                                         9459–9474.
+
+                                                        Tian Liang, Zhiwei He, Wenxiang Jiao, Xing Wang, 
+Soyeong Jeong, Jinheon Baek, Sukmin Cho, Sung Ju          Yan Wang, Rui Wang, Yujiu Yang, Shuming Shi, and 
+   Hwang, and Jong Park. 2024. Adaptive-RAG: Learn-       Zhaopeng Tu. 2024. Encouraging divergent thinking 
+   ing to adapt retrieval-augmented large language mod-   in large language models through multi-agent debate. 
+   els through question complexity. In Proceedings of     In Proceedings of the 2024 Conference on Empiri- 
+   the 2024 Conference of the North American Chap-        cal Methods in Natural Language Processing, pages 
+   ter of the Association for Computational Linguistics:  17889–17904.
+   Human Language Technologies (Volume 1: Long 
+   Papers), pages 7036–7050.                            Ritwik Mishra, Rajiv Ratn Shah, and Ponnurangam 
+
+                                                          Kumaraguru. 2025. Long-context non-factoid ques- 
+Albert Q. Jiang, Alexandre Sablayrolles, Arthur Men-      tion answering in Indic languages. arXiv preprint 
+   sch, Chris Bamford, Devendra Singh Chaplot, Diego      arXiv:2504.13615.
+
+   de Las Casas, Florian Bressand, Gianna Lengyel, 
+   Guillaume Lample, Lucile Saulnier, Lélio Re-         OpenAI. 2024. GPT-4o system card. arXiv preprint 
+   nard Lavaud, Marie-Anne Lachaux, Pierre Stock,         arXiv:2410.21276.
+   Teven Le Scao, Thibaut Lavril, Thomas Wang, Tim-     Long Ouyang, Jeffrey Wu, Xu Jiang, Diogo Almeida, 
+   othée Lacroix, and William El Sayed. 2023. Mistral     Carroll L. Wainwright, Pamela Mishkin, Chong 
+   7B. arXiv preprint arXiv:2310.06825.                   Zhang, Sandhini Agarwal, Katarina Slama, Alex Ray, 
+                                                          John Schulman, Jacob Hilton, Fraser Kelton, Luke 
+Mandar Joshi, Eunsol Choi, Daniel Weld, and Luke          Miller, Maddie Simens, Amanda Askell, Peter Welin- 
+   Zettlemoyer. 2017. TriviaQA: A large scale distantly   der, Paul F. Christiano, Jan Leike, and Ryan Lowe. 
+   supervised challenge dataset for reading comprehen-    2022. Training language models to follow instruc- 
+   sion. In Proceedings of the 55th Annual Meeting of     tions with human feedback. In Advances in Neural 
+   the Association for Computational Linguistics (Vol-    Information Processing Systems 35: Annual Con- 
+   ume 1: Long Papers), pages 1601–1611.                  ference on Neural Information Processing Systems 
+                                                          2022, NeurIPS 2022, New Orleans, LA, USA, Novem- 
+Vladimir Karpukhin, Barlas Oguz, Sewon Min, Patrick       ber 28 - December 9, 2022.
+   Lewis, Ledell Wu, Sergey Edunov, Danqi Chen, and 
+   Wen-tau Yih. 2020. Dense passage retrieval for open- Matthew E. Peters, Mark Neumann, Mohit Iyyer, Matt 
+   domain question answering. In Proceedings of the       Gardner, Christopher Clark, Kenton Lee, and Luke 
+   2020 Conference on Empirical Methods in Natural        Zettlemoyer. 2018. Deep contextualized word rep- 
+   Language Processing, pages 6769–6781.                  resentations. In Proceedings of the 2018 Confer- 
+                                                          ence of the North American Chapter of the Associ- 
+Tom Kwiatkowski, Jennimaria Palomaki, Olivia Red-         ation for Computational Linguistics: Human Lan- 
+   field, Michael Collins, Ankur Parikh, Chris Al-        guage Technologies, NAACL-HLT 2018, New Or- 
+   berti, Danielle Epstein, Illia Polosukhin, Jacob De-   leans, Louisiana, USA, June 1-6, 2018, Volume 1 
+   vlin, Kenton Lee, Kristina Toutanova, Llion Jones,     (Long Papers), pages 2227–2237.
+
+   Matthew Kelcey, Ming-Wei Chang, Andrew M. Dai, 
+   Jakob Uszkoreit, Quoc Le, and Slav Petrov. 2019.     Zackary Rackauckas. 2024. RAG-Fusion: a new take 
+   Natural Questions: A benchmark for question an-        on retrieval-augmented generation. International 
+   swering research. Transactions of the Association      Journal on Natural Language Computing, 13:37–47.
+   for Computational Linguistics, 7:452–466.            Pranav Rajpurkar, Jian Zhang, Konstantin Lopyrev, and 
+                                                          Percy Liang. 2016. SQuAD: 100,000+ questions 
+Woosuk Kwon, Zhuohan Li, Siyuan Zhuang, Ying              for machine comprehension of text. In Proceedings 
+   Sheng, Lianmin Zheng, Cody Hao Yu, Joseph Gon-         of the 2016 Conference on Empirical Methods in 
+   zalez, Hao Zhang, and Ion Stoica. 2023. Efficient      Natural Language Processing, pages 2383–2392.
+   memory management for large language model serv- 
+   ing with PagedAttention. In Proceedings of the 29th  Harsh Trivedi, Niranjan Balasubramanian, Tushar Khot, 
+   Symposium on Operating Systems Principles, page        and Ashish Sabharwal. 2022. MuSiQue: Multi- 
+   611–626.                                               hop questions via single-hop question composition.
+
+
+                                                    138
+
+ Transactions of the Association for Computational 
+ Linguistics, 10:539–554.
+Ellen M. Voorhees and Dawn M. Tice. 2000. The 
+ TREC-8 question answering track. In Proceedings 
+ of the Second International Conference on Language 
+ Resources and Evaluation.
+Shitao Xiao, Zheng Liu, Peitian Zhang, Niklas Muen- 
+ nighoff, Defu Lian, and Jian-Yun Nie. 2024. C-Pack: 
+ Packed resources for general Chinese embeddings. 
+ In Proceedings of the 47th International ACM SI- 
+ GIR Conference on Research and Development in 
+ Information Retrieval, page 641–649.
+Shi-Qi Yan, Jia-Chen Gu, Yun Zhu, and Zhen-Hua Ling. 
+ 2024. Corrective retrieval augmented generation. 
+ arXiv preprint arXiv:2401.15884.
+Diji Yang and Omar Alonso. 2024. A bespoke question 
+ intent taxonomy for e-commerce. In Proceedings 
+ of the ACM SIGIR Workshop on eCommerce 2024 
+ co-located with the 47th International ACM SIGIR 
+ Conference on Research and Development in Infor- 
+ mation Retrieval (SIGIR 2024), Washington D.C., 
+ USA, July 18, 2024, volume 3843 of CEUR Work- 
+ shop Proceedings.
+Sihui Yang, Keping Bi, Wanqing Cui, Jiafeng Guo, and 
+ Xueqi Cheng. 2024. LINKAGE: Listwise ranking 
+ among varied-quality references for non-factoid QA 
+ evaluation via LLMs. In Findings of the Association 
+ for Computational Linguistics, pages 6985–7000.
+Zhilin Yang, Peng Qi, Saizheng Zhang, Yoshua Bengio, 
+ William Cohen, Ruslan Salakhutdinov, and Christo- 
+ pher D. Manning. 2018. HotpotQA: A dataset for 
+ diverse, explainable multi-hop question answering. 
+ In Proceedings of the 2018 Conference on Empiri- 
+ cal Methods in Natural Language Processing, pages 
+ 2369–2380.
+Liang Zhang, Katherine Jijo, Spurthi Setty, Eden Chung, 
+ Fatima Javid, Natan Vidra, and Tommy Clifford. 
+ 2024. Enhancing large language model performance 
+ to answer questions and extract information more 
+ accurately. arXiv preprint arXiv 2402.01722.
+Tianyi Zhang, Varsha Kishore, Felix Wu, Kilian Q. 
+ Weinberger, and Yoav Artzi. 2020. BERTScore: 
+ Evaluating text generation with BERT. In 8th Inter- 
+ national Conference on Learning Representations.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                     139
+
+A Prompt Details
+
+A.1 Reference List Construction
+
+ Prompt Template to Generate the Highest Standard Reference Answer
+
+ Given a non-factoid question:"{question}" and its answer:"{ground_truth}" 
+ Use your internal knowledge to rewrite this answer.
+
+
+Figure 5: Prompt template proposed by Yang et al. (2024) to generate the highest standard reference answer using 
+LLM’s internal knowledge.
+
+
+ Prompt Template to Generate Diverse Qualities of Reference Answers
+
+ Generate three different answers to a non-factoid question from good to bad in quality, each inferior to the golden 
+ answer I give you. Ensure that the quality gap from good to bad is very significant among these three answers. Golden 
+ answer is the reasonable and convincing answer to the question. Answer 1 can be an answer to the question, however, it 
+ is not sufficiently convincing. Answer 2 does not answer the question or if it does, it provides an unreasonable answer. 
+ Answer 3 is completely out of context or does not make any sense.
+
+ Here are 3 examples for your reference.
+ 1.Non-factoid Question: how can we get concentration on something?
+ Golden Answer: To improve concentration, set clear goals, create a distraction-free environment, use time management 
+ techniques like the Pomodoro Technique, practice mindfulness, take regular breaks, stay organized, limit multitasking, 
+ practice deep work, maintain physical health, and seek help if needed.
+ Output:
+ Answer 1: Improve focus: set goals, quiet space, Pomodoro Technique, mindfulness, breaks, organization, limit 
+ multitasking, deep work, health, seek help if needed.
+ Answer 2: Just like and enjoy the work you do, concentration will come automatically.
+ Answer 3: If you are student, you should concentrate on studies and don’t ask childish questions.
+
+ 2.Non-factoid Question: Why doesn’t the water fall off earth if it’s round?
+ Golden Answer: Earth’s gravity pulls everything toward its center, including water. Even though Earth is round, gravity 
+ keeps water and everything else anchored to its surface. Gravity’s force is strong enough to counteract the Earth’s 
+ curvature, preventing water from falling off.
+ Output:
+ Answer 1: This goes along with the question of why don’t we fall off the earth if it is round. The answer is because 
+ gravity is holding us (and the water) down.
+ Answer 2: Same reason the people don’t.
+ Answer 3: When rain drops fall through the atmosphere CO2 becomes dissolved in the water. CO2 is a normal 
+ component of the Earth’s atmosphere, thus the rain is considered naturally acidic.
+
+ 3.Non-factoid Question: How do I determine the charge of the iron in FeCl3?
+ Golden Answer: Since chloride ions (Cl-) each carry a charge of -1, and there are three chloride ions in FeCl3, the total 
+ negative charge from chloride ions is -3. To balance this, the iron ion (Fe) must have a charge of +3 to ensure the 
+ compound has a neutral overall charge. Therefore, the charge of the iron ion in FeCl3 is +3.
+ Output:
+ Answer 1: Charge of Fe in Fecl3 is 3. Iron has either 2 as valancy or 3. in this case it bonds with three chlorine 
+ molecules. therefore its valency and charge is three.
+ Answer 2: If two particles (or ions, or whatever) have opposite charge, then one has positive charge and one has 
+ negative charge.
+ Answer 3: take a piece of iron. Wrap a copper wire around the iron in tight close coils. run a charge through the wire.
+
+ Below are the non-factoid question, and the golden answer. 
+ Non-factoid Question: {question}
+ Golden Answer: {ground_truth}
+ Output:
+
+ Figure 6: Prompt template proposed by Yang et al. (2024) to generate diverse qualities of reference answers.
+
+
+
+
+
+
+
+                           140
+
+A.2 Reference Answers Annotation
+
+     System Prompt for Reference Answers Annotation
+     Your task is to evaluate the relevance and quality of multiple candidate answers for a given 
+     non-factoid question.
+     Please evaluate the quality of each answer in a step-by-step manner.
+     Follow the structured guidelines below to ensure consistency and accuracy in your evaluation.
+
+     # Notes on Candidate Answers
+     Multiple candidate answers can come in two forms:
+     - Single choice answer: A single string, e.g., `"born again"`.
+     - Multiple choice answer: A list of strings, e.g., `[‘traffic calming’, ‘aesthetics’]`.
+     When evaluating multiple choice answers, treat the entire list as a single unit. Do **not** split 
+     them into individual components; instead, evaluate the overall quality as a whole.
+
+     # Evaluation Criteria
+     Assign a label to each candidate answer based on the following criteria:
+     - 3: The answer provides a comprehensive, accurate, and contextually relevant response that
+     directly addresses the question.
+     - 2: The answer is accurate and relevant but lacks depth or comprehensive coverage.
+     - 1: The answer is somewhat relevant but contains inaccuracies, vagueness, or insufficient detail.
+     - 0: The answer is irrelevant, incorrect, or fails to address the question meaningfully.
+     **If there are two or more answers that you think are close in quality, you can give the same label.**
+
+     # Response Format
+     - Assign a label to each answer strictly in the format: `Answer X: [[Y]]`, where `X` is the answer
+     number, and `Y` is the integer score (0-3).
+     - Do **not** include any additional comments or explanations outside this format.
+
+     Input Prompt Template for Reference Answers Annotation
+     # Inputs
+     - Non-Factoid Question: {question}
+     - Candidate Answers:
+     {reference_answers}
+
+Figure 7: System prompt (top) and input prompt template (bottom) adapted from Yang et al. (2024) for annotating 
+the quality level of generated reference answers.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                                                          141
+
+      A.3 Prompt templates for Baseline Methods
+
+       Prompt template for LLM
+       You are an assistant for answering questions. 
+       Answer the following question.
+
+       ### Question 
+       {question}
+
+       ### Answer
+                  Figure 8: Prompt template for LLM method.
+
+       Prompt template for RAG
+       You are an assistant for answering questions.
+       Refer to the references below and answer the following question.
+.
+       ### References
+       {reference_passages}
+
+       ### Question 
+       {question}
+
+       ### Answer
+
+                  Figure 9: Prompt template for RAG method.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                         142
+
+A.4 Prompt templates for TYPED-RAG 
+A.4.1 Comparison
+
+  Prompt Template for Keyword Extraction in Comparison Type Questions
+  You are a query analysis assistant. Based on the query type, apply the relevant prompt to transform 
+  the query to better align with the user’s intent, ensuring clarity and precision.
+  Determine if the input query is a compare-type question (i.e., compare/contrast two or more things, 
+  understand their differences/similarities.) as a "Query Analyst". If so, perform the following:
+
+  1. Identify the type of comparison: "differences", "similarities", or "superiority".
+  2. Extract the subjects of comparison and represent them as specific, contextualized phrases.
+
+  ### Output format
+  {"is_compare": true/false, "compare_type": "", "keywords_list": []}
+
+  ### Example
+  Query: "Who is more intelligent than humans on earth?"
+  Analysis:
+  {"is_compare": true, "compare_type": "superiority", "keywords_list": ["human intelligence", "the 
+  intelligence of other beings"]}
+
+  ### Input
+  Query: {query} 
+  ### Output
+  Analysis:
+
+
+      Figure 10: Prompt template for keyword extraction in Comparison type questions.
+
+  Prompt Template for Generating a Response to Comparison Type Questions
+  You are an assistant for answering questions.
+  You are given the extracted parts of a long document and a question. Refer to the references below  
+  and answer the following question.
+
+  The question is a compare-type with a specific comparison type and keywords indicat- 
+  ing the items to compare.
+  Answer based on this comparison type and the target keywords provided.
+
+  ### Inputs
+  Question: {question}
+  Comparison Type: {comparison_type} 
+  Keywords: {keywords}
+  References:
+  {reference_passages}
+  ### Output 
+  Answer:
+
+      Figure 11: Prompt template for generating a response to Comparison type questions.
+
+                       143
+
+A.4.2 Experience
+Figure 12 shows the prompt template for responding to Experience type questions. The retrieved passages 
+are subsequently re-ranked based on the extracted keywords. After reranking, we use the prompt template 
+for RAG (Figure 9) to generate answers.
+  Prompt Template for Keyword Extraction in Experience Type Questions
+  You are a query analysis assistant. Based on the query type, apply the relevant prompt to transform 
+  the query to better align with the user’s intent, ensuring clarity and precision.
+  The input question is an experience-type question (i.e., get advice or recommendations on a 
+  particular topic.). As a "Query Analyst", please evaluate this question and proceed with the 
+  following steps.
+
+  1. Identify the topic intended to be gathered from experience-based questions.
+  2. Extract the key entities in the question, considering the intent of asking about experience, to 
+  facilitate an accurate response.
+
+  ### Output format
+  `["Keyword 1", ..., "Keyword N"]` (List of string, separated with comma)
+
+  ### Example
+  Question (Input): "What are some of the best Portuguese wines?" 
+  Answer (Output): ["Portuguese wines", "best"]
+
+  ### Input
+  Question: {question} 
+  ### Output
+  Answer:
+
+       Figure 12: Prompt template for keyword extraction in Experience type questions.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                       144
+
+A.4.3 Reason & Instruction
+
+ Prompt Template for Generating Sub-queries in Reason Type Questions
+
+ You are a query analysis assistant. Based on the query type, apply the relevant prompt to transform the query to better 
+ align with the user’s intent, ensuring clarity and precision.
+ The input query is a reason-type question (i.e., a question posed to understand the reason behind a particular concept or 
+ phenomenon). As a 'Query Analyst', please evaluate this query and proceed with the following steps.
+
+ 1. Break down the original instruction into multiple sub-queries that preserve the core intent but use varied 
+ language and structure. These multiple sub-queries should aim to capture different linguistic expressions of the original 
+ instruction while still aligning with its intended meaning.
+ 2. Create at least 2 to 5 distinct multiple sub-queries.
+
+ ### Output format
+ `['sub-query 1',...,'sub-query N']` (List of string, separated with comma)
+
+ ### Input
+ Query: {query}
+ ### Output
+ Multiple sub-queries:
+
+        Figure 13: Prompt template for generating sub-queries in Reason type questions.
+
+
+ Prompt Template for Generating Sub-queries in Instruction Type Questions
+
+ You are a query analysis assistant. Based on the query type, apply the relevant prompt to transform the query to better 
+ align with the user’s intent, ensuring clarity and precision.
+ The input query is an instruction-type question (i.e., Instructions/guidelines provided in a step-by-step manner). 
+ As a 'Query Analyst', please evaluate this query and proceed with the following steps.
+ 1. Break down the original instruction into multiple sub-queries that preserve the core intent but use varied language 
+ and structure.
+ These multiple sub-queries should aim to capture different linguistic expressions of the original instruction while still 
+ aligning with its intended meaning.
+ 2. Create at least 2 to 5 distinct multiple sub-queries.
+
+ ### Output format
+ `['sub-query 1',...,'sub-query N']` (List of string, separated with comma)
+
+ ### Input
+ Query: {query}
+ ### Output
+ Multiple sub-queries:
+
+       Figure 14: Prompt template for generating sub-queries in Instruction type questions.
+
+
+ Prompt Template for Aggregating Answers to an Original Question
+
+ You are an assistant tasked with aggregating answers to a question.
+ You are provided with the original question and multiple question-answer pairs. These queries preserve the core intent 
+ of the original question but use varied language and structure. Your goal is to review the question-answer pairs and 
+ synthesize a concise and accurate response to the original question based on the information provided.
+ Using the information from the question-answer pairs, generate a brief and clear answer to the original question.
+
+ ### Inputs
+ Original Question: {original_question} 
+ Question-Answer Pairs:
+ {qa_pairs_text}
+ ### Output
+ Aggregated Answer:
+
+Figure 15: Prompt template for aggregating answers to an original question. Used by Reason type questions and 
+Instruction type questions.
+
+
+                           145
+
+A.4.4 Debate
+
+      Prompt Template for Generating Sub-queries in Debate Type Questions
+      You are a query analysis assistant. Based on the query type, apply the relevant prompt to transform the query to better 
+      align with the user’s intent, ensuring clarity and precision.
+      The input question is a debate-type question (i.e., invites multiple perspectives). As a "Query Analyst", please evaluate 
+      this question and proceed with the following steps.
+
+      1. Extract the debate topic.
+      2. Identify 2 to 5 key perspectives on this topic.
+      3. Generate a sub-query reflecting each perspective’s bias.
+
+      Ensure each sub-query fits a Retrieval-Augmented Generation (RAG) framework, seeking passages that align with the 
+      viewpoint.
+
+      ### Output format
+      {"debate_topic": {topic}, "dist_opinion": [list of perspectives], "sub-queries": {"opinion1": "biased sub-query for 
+      opinion1", "opinion2": "biased sub-query for opinion2", ...}
+
+      ### Example
+      Query: "Is Trump a good president?"
+      Answer:
+      {
+              "debate_topic": "Donald Trump’s presidency",
+              "dist_opinion": ["positive", "negative", "neutral"],
+              "sub-queries": {
+                     "positive": "Was Donald Trump one of the best presidents for economic growth?", 
+                     "negative": "Did Trump’s presidency harm the U.S. economy and leadership?", 
+                     "neutral": "Can we assess Trump’s tenure’s strengths and weaknesses?"
+              }
+      }
+
+      ### Input
+      Query: {query} 
+      ### Output
+      Answer:
+
+      Prompt Template for Debate Mediator in Debate Type Questions
+      You are acting as the mediator in a debate.
+      Below is a topic and responses provided by n participants, each with their own perspective. Your task is to synthesize 
+      these responses by considering both the debate topic and each participant’s viewpoint, providing a fair and balanced 
+      summary. Ensure the response maintains balance, captures key points, and distinguishes any opposing opinions. 
+      Present the answer *short and concise*, phrased in a direct format without using phrases like "participants in the 
+      debate" or "in the debate."
+
+      ### Input format
+      - Debate topic: {debate_topic}
+      - Participant’s responses:
+      - Response1: "{response content}" (Perspective: {perspective 1})
+      - Response 2: "{response content}" (Perspective: {perspective 2})
+      - ...
+      - Response N: "{response content}" (Perspective: {perspective N})
+
+      ### Output format
+      A short and concise summary from the mediator’s perspective based on the discussion, phrased as a direct answer 
+      without reference to the debate structure or participants
+
+      ### Inputs
+      Debate topic: {debate_topic}
+      Participant’s responses: {responses} 
+      ### Output
+      Summary:
+
+Figure 16: Prompt templates for generating sub-queries (top) and debate mediator (bottom) in Debate type questions. 
+We reference the debate mediator prompt from Liang et al. (2024) to ensure that responses objectively aggregate 
+and present diverse perspectives.
+
+
+                                                                                       146
+
+B Implementation Details                          NQ-NF, SQuAD-NF, and TriviaQA-NF These 
+                                                  benchmarks feature open-ended non-factoid ques- 
+All experiments were conducted using the NVIDIA   tions that often demand explanatory or elaborate 
+A100 (80 GB) GPUs and the OpenAI API.             answers. TYPED-RAG delivers substantial gains 
+B.1 LLM                                           in both MRR and MPR, demonstrating its ability to 
+                                                  generate detailed, on-topic responses. For instance, 
+For all experiments involving open-source LLMs,   on SQuAD-NF using the Mistral-7B base model 
+we employ vLLM (Kwon et al., 2023) to enable      with a GPT-4o mini scorer, TYPED-RAG achieves 
+fast and memory-efficient inference.              an MRR of 0.7444—significantly outperforming 
+B.2 RAG                                           the LLM-only (0.4222) and RAG-based (0.3817) 
+To perform NFQA with our RAG-based QA sys-        baselines.
+tem, the retriever selects five passages that are HotpotQA-NF and MuSiQue-NF These 
+then provided to the generator as references. For datasets require multi-hop reasoning, where 
+Wikipedia-based tasks, we use BM25 on the         answers must synthesize information from 
+Wikipedia corpus preprocessed by Karpukhin et al. multiple passages. By decomposing questions 
+
+(2020) as the external retrieval index.           into type-specific aspects, TYPED-RAG more 
+
+                                                  effectively navigates these complex reasoning 
+B.3 TYPED-RAG                                     chains, yielding notable improvements in MPR 
+A detailed overview of TYPED-RAG is shown in      compared to both LLM and RAG methods.
+Figure 17.
+  The reranker employed in TYPED-RAG is BGE-      2WikiMultiHopQA-NF Although            overall
+Reranker-Large2 (Xiao et al., 2024).              scores are lower on this particularly challenging 
+                                                  dataset, TYPED-RAG still surpasses LLM-only 
+B.4 LINKAGE Evaluation                            and RAG baselines. This result underscores 
+For LINKAGE evaluation, we adhere to the orig-    TYPED-RAG’s robustness even in scenarios 
+inal settings: nucleus sampling (top_p = 0.95),   demanding extensive, multi-step inference.
+a maximum output length of 512 tokens, and a 
+default temperature of 0.8. The temperature is re- 
+
+duced to 0.1 when annotating reference answers.
+
+
+B.5 Reference Answer Construction on 
+     Wiki-NFQA
+
+To build reference answers for the Wiki-NFQA 
+dataset, we use three LLMs to capture diverse 
+styles: (i) GPT-3.5-turbo-16k, (ii) Mistral-7B- 
+
+Instruct-v0.23 (Jiang et al., 2023), and (iii) Llama- 
+3.1-8B-Instruct4. Each model generates three high- 
+quality responses, totaling nine reference answers. 
+Additionally, we use GPT-4o-2024-08-06 (Ope- 
+nAI, 2024) to produce a single, superior reference 
+answer that is distinct from the other nine.
+
+
+C Detailed Analysis per Dataset
+
+
+We conduct a dataset-specific analysis to high- 
+light TYPED-RAG’s strengths across different 
+challenge contexts.
+
+  2https://huggingface.co/BAAI/ 
+
+bge-reranker-large
+  3https://huggingface.co/mistralai/ 
+Mistral-7B-Instruct-v0.2
+  4https://huggingface.co/meta-llama/Llama-3. 
+1-8B-Instruct
+
+                                              147
+
+(d) Reason / Instruction
+(e) Debate
+(a) Evidence-based
+Multi-aspect 
+Query
+Retriever
+K References
+Generator
+Result
+(b) Comparison
+(c) Experience
+Multi-aspect 
+Query
+Multi-aspect 
+Query
+Multi-aspect 
+Decomposer
+Multi-aspect 
+Decomposer
+N Single-aspect 
+Queries
+N Single-aspect 
+Queries
+Compare Type
+Retriever
+K References
+Retriever
+N K References
+Reranker
+Reranker
+Top-K Reranked 
+References
+Top-K Reranked 
+References
+Generator
+Generator
+Result
+Result
+Multi-aspect 
+Query
+Multi-aspect 
+Decomposer
+ingleaspect
+g
+N Single-aspect
+Query
+Queries
+Query
+Retriever
+Generator
+N Responses
+Result
+Answer 
+Aggregator
+Multi-aspect 
+Query
+Generator
+Retriever
+Result
+Multi-aspect 
+Decomposer
+N Responses
+Sinleasect
+g
+N Single-aspect
+Query
+Queries
+Query
+Topic-aspect
+Answer 
+Aggregator
+Figure 17: A detailed overview of TYPED-RAG.
+148
+
+D Case Study
+
+ NFQ Type       Example of Question    Response of TYPED-RAG
+ Evidence-based How does sterilisation The term "sterilisation" is often used in economics 
+                help to keep the money to refer to the act of preventing currency or securities 
+                flow even?             from affecting the monetary base due to interest rate 
+                                       differentials. When a central bank engages in open 
+                                       market operations to buy or sell securities, it may 
+                                       want to prevent the money flow from being disrupted 
+                                       by interest rate differentials in different markets.
+
+                                       Sterilisation helps to keep the money flow even 
+                                       by offsetting the effect of open market operations 
+                                       on the monetary base. When a central bank buys 
+                                       securities, it injects cash into the economy and 
+                                       increases the monetary base. However, if this leads 
+                                       to an appreciation of the domestic currency, it may 
+                                       reduce the competitiveness of exports and increase 
+                                       the cost of imports. To prevent this, the central bank 
+                                       may sell an equivalent amount of foreign currency 
+                                       in the foreign exchange market, which reduces the 
+                                       monetary base and helps to offset the initial effect of 
+                                       the open market operation.
+
+                                       Similarly, if a central bank sells securities, it 
+                                       decreases the monetary base and may lead to a 
+                                       depreciation of the domestic currency, which can 
+                                       make exports more competitive and imports more 
+                                       expensive. To prevent this, the central bank may 
+                                       buy an equivalent amount of foreign currency in 
+                                       the foreign exchange market, which increases the 
+                                       monetary base and helps to offset the initial effect of 
+                                       the open market operation.
+
+                                       In summary, sterilisation is a tool used by central 
+                                       banks to keep the money flow even and maintain 
+                                       control over the monetary base, despite open market 
+                                       operations that may otherwise disrupt the flow of 
+                                       funds. It allows central banks to implement monetary 
+                                       policy while minimizing the impact on currency 
+                                       values and other macroeconomic variables.
+                                                              Continued on next page
+
+
+
+
+
+
+
+
+                                        149
+
+NFQ Type      Example of Question   Response of TYPED-RAG
+
+Comparison    what is the differenceDysphagia and odynophagia are two distinct 
+              between dysphagia and conditions related to swallowing.
+              odynophagia
+                                    Dysphagia is the medical term for difficulty 
+                                    swallowing. It can be caused by various conditions, 
+                                    including neurological disorders, stroke, cancer, 
+                                    or structural problems in the throat or esophagus. 
+                                    Symptoms of dysphagia include the sensation of 
+                                    food sticking in the throat or chest, coughing or 
+                                    choking during eating, and pain or discomfort while 
+                                    swallowing.
+
+                                    On the other hand, odynophagia is the medi- 
+                                    cal term for pain while swallowing. It is a symptom 
+                                    of an underlying condition, such as a sore throat, 
+                                    inflammation, or infection. The pain can be de- 
+                                    scribed as sharp or throbbing and may be worsened 
+                                    by swallowing solid or acidic foods. Odynophagia 
+                                    can also be a symptom of gastroesophageal reflux 
+                                    disease (GERD) or eosinophilic esophagitis.
+
+                                    In summary, dysphagia is a condition that 
+                                    makes it difficult to swallow, while odynophagia 
+                                    is a symptom of pain while swallowing. A person 
+                                    with dysphagia may also experience pain while 
+                                    swallowing, but the primary issue is the difficulty 
+                                    in moving food from the mouth to the stomach. 
+                                    Conversely, a person with odynophagia primarily 
+                                    experiences pain while swallowing, but they may 
+                                    still be able to swallow relatively normally.
+                                                         Continued on next page
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                    150
+
+NFQ Type         Example of Question        Response of TYPED-RAG
+
+Experience       What are some of the best  Based on the available references in the document, 
+                 Portuguese wines?          some Portuguese wines that are often considered 
+                                            excellent include:
+                                            1. The reference 14098516 might be referring to Port 
+                                            Wine, a fortified wine produced in the Douro Valley 
+                                            region. Port Wine is known for its sweet and rich 
+                                            flavors and comes in various styles such as Tawny, 
+                                            Ruby, and White Port.
+                                            2. Reference 5043240 could be referring to Vinho 
+                                            Verde, a light, slightly effervescent wine from the 
+                                            Vinho Verde region in the north of Portugal. It is 
+                                            typically low in alcohol and is often served chilled.
+                                            3. The Douro region is also famous for its red wines, 
+                                            such as those referenced in 2866435. These wines 
+                                            are known for their robust flavors and are often 
+                                            blended from a variety of grape varieties.
+                                            4. The reference 4891311 might be referring to 
+                                            Madeira Wine, another fortified wine from the 
+                                            Madeira Islands. Madeira Wine is known for its 
+                                            complex flavors and can range from sweet to dry.
+                                            5. Lastly, the reference 309483 could be referring 
+                                            to Dã Wines, which come from the Dã region in 
+                                            central Portugal. These wines are known for their 
+                                            elegance and balance, with flavors of red fruit, herbs, 
+                                            and minerals.
+
+                                            So, based on the given references, some of 
+                                            the best Portuguese wines include Port Wine, Vinho 
+                                            Verde, Douro Red Wines, Madeira Wine, and Dã 
+                                            Wines.
+Reason           Kresy, which roughly was   The Curzon Line refers to the boundary proposed 
+                 a part of the land beyond  by Lord Curzon, then Viceroy of India, in 1920, as 
+                 the so-called Curson Line, a potential eastern border for a future independent 
+                 was drawn for what         Poland. Kresy, or Eastern Borderlands, was the area 
+                 reason?                    of land beyond this proposed border. It was drawn 
+                                            for various reasons, including historical, ethnic, and 
+                                            strategic considerations. The area had been part of 
+                                            the Polish state in the past, and there was a significant 
+                                            Polish population there. Ethnically, the region was 
+                                            diverse, with various groups including Poles, Ukraini- 
+                                            ans, Belarusians, and Jews. Strategically, the region 
+                                            was important due to its location near the borders 
+                                            of several neighboring countries and its rich natural 
+                                            resources.
+                                                                      Continued on next page
+
+
+
+                                            151
+
+NFQ Type          Example of Question        Response of TYPED-RAG
+
+Instruction       How can you find a lodge To find a lodge to inquire about membership,
+                  to ask to be a member of? consider the following steps:
+
+                                             1. Contact the Grand Lodge of your jurisdic- 
+                                             tion (state or country) for a list of lodges in your 
+                                             area. You can usually find this information on their 
+                                             website or by contacting them directly.
+                                             2. Research the lodges on the list to learn more about 
+                                             their history, traditions, and meeting times. This can 
+                                             be done through their websites, social media pages, 
+                                             or by contacting them directly.
+                                             3. Attend a few meetings as a visitor to get a feel for 
+                                             the lodge and its members. You may need to request 
+                                             an invitation from the lodge’s secretary or master.
+                                             4. Speak with current members about their experi- 
+                                             ences and the expectations for new members. This 
+                                             can help you determine if the lodge is a good fit for 
+                                             you.
+                                             5. Consider your availability and the lodge’s meeting 
+                                             schedule to ensure you can commit to attending 
+                                             meetings regularly.
+
+                                             Remember, every lodge is unique, so it’s es- 
+                                             sential to find one that aligns with your values and 
+                                             interests. Good luck in your search!
+
+                                             (Note: The references provided do not con- 
+                                             tain information relevant to finding a lodge to ask to 
+                                             be a member of.)
+Debate            I Can See Your Voice, a    Based on the information provided in the references, 
+                  reality show from South    "I Can See Your Voice" is a South Korean reality 
+                  Korea, offers what kind of show that offers singers a chance to audition without 
+                  performers a chance to     revealing their appearance or singing voice to the 
+                  make their dreams of       judges initially. This format is designed to evaluate 
+                  stardom a reality?         contestants based on their charisma, rhythm, and 
+                                             overall performance without any biases influenced by 
+                                             their physical appearance or singing voice. Therefore, 
+                                             the show provides an opportunity for talented singers 
+                                             who might not have been given a chance due to their 
+                                             looks or voice in their initial auditions to showcase 
+                                             their abilities and pursue their dreams of stardom.
+
+          Table 4: Sample responses of TYPED-RAG across various non-factoid question types.
+
+
+
+
+
+
+                                             152
+

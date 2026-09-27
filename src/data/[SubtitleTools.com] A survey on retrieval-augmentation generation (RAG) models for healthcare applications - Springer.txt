@@ -1,0 +1,261 @@
+﻿Neural Computing and Applications (2025) 37:28191–28267
+
+
+ORIGINAL ARTICLE
+
+A survey on retrieval-augmentation generation (RAG)
+
+models for healthcare applications
+
+Mohamed Abo El-Enen1 Sally Saad1 Taymoor Nazmy1
+
+Received: 16 November 2024/Accepted: 9 September 2025/Published online: 16 October 2025 
+© The Author(s) 2025
+
+Abstract
+Retrieval-augmented generation (RAG) models have become crucial in healthcare applications, significantly 
+enhancing the relevance and reliability of AI-driven insights by combining the generative capabilities of large 
+language models (LLMs) with retrieval-based methods. As healthcare data demand precision and accountability, 
+RAG models address critical limitations of LLMs, such as the tendency to “hallucinate”or produce inaccurate 
+information—by incorporating real-time retrieval from trusted medical knowledge bases and clinical literature. 
+This dual process of retrieving and generating ensures that responses are both contextually accurate and aligned 
+with the latest clinical evidence, making RAG models especially valuable for medical question answering, 
+diagnostics, and treatment planning. This paper presents an in-depth exploration of RAG models and LLMs, 
+specifically within healthcare contexts, to meet the unique demands of medical data processing and decision 
+support. It reviews various RAG architectures, including Naive, Advanced, and Modular RAG approaches, 
+discussing how each framework optimizes retrieval depth, response quality, and computational efficiency. By 
+reducing errors in patient-care recommendations, RAG models play an essential role in scenarios that require high 
+precision and accountability. Additionally, this survey addresses the ethical considerations and transparency 
+requirements for deploying RAG models in healthcare, identifying current challenges and future directions, such 
+as enhancing source interpretability and adapting RAG frameworks for specialized medical fields. By system- 
+atically analyzing RAG techniques, this paper provides a comprehensive guide to the state-of-the-art in RAG 
+applications within healthcare, positioning RAG models as a transformative tool for advancing AI-supported 
+healthcare outcomes.
+
+Keywords Generative AI Large language model• Contrastive language-image pre-training Multimodal • 
+Retrieval-augmented generation Natural language processing Knowledge retrieval
+
+
+1 Introduction
+
+The rapid advancement of artificial intelligence (AI), particularly in natural language processing, has ushered in a 
+new era of possibilities for healthcare. Large language models (LLMs) have emerged as transformative tools, 
+demonstrating remarkable capabilities in understanding, generating, and reasoning with medical language [1, 2]. 
+From general-purpose models like GPT-3 and GPT-4 to specialized medical models such as Med-PaLM [3], 
+these AI systems are reshaping clinical practice by enhancing diagnostic accuracy, improving patient-provider 
+communication, and supporting personalized treatment planning.
+  However, the application of LLMs in healthcare presents unique challenges that demand specialized solutions. 
+The high-stakes nature of medical decision-making, where errors can have life-altering consequences, requires an
+
+
+
+        Neural Computing and Applications (2025) 37:28191–28267 https://doi.org/10.1007/s00521-025-11666-9
+
+                                                                                      1 3
+
+28192                                                https://doi.org/10.1007/s00521-025-11666-9
+
+unprecedented level of accuracy and reliability. Traditional LLMs, while powerful, face several critical limita- 
+tions in healthcare settings:
+• Static Knowledge Problem: Medical knowledge evolves rapidly, with new research, clinical guidelines, and 
+  treatment protocols emerging constantly [4]. LLMs trained on fixed datasets quickly become outdated, 
+  potentially providing recommendations based on superseded information.
+• Hallucination Risk: The tendency of LLMs to generate plausible-sounding but factually incorrect information 
+  is particularly dangerous in healthcare contexts, where accuracy is paramount [5].
+• Domain-Specific Nuances: Medical language contains specialized terminology, abbreviations, and contextual 
+  dependencies that general-purpose LLMs may misinterpret [6].
+• Evidence-Based Practice: Modern medicine requires decisions to be grounded in verifiable evidence, yet 
+  standard LLMs often lack transparent sourcing for their outputs [7].
+To address these challenges, Retrieval-Augmented Generation (RAG) models have emerged as a promising 
+solution [8]. RAG architectures combine the generative capabilities of LLMs with dynamic retrieval from 
+authoritative medical knowledge bases, creating systems that can:
+• Access up-to-date clinical guidelines and research findings
+• Ground responses in verifiable sources
+• Adapt to specialized medical subdomains
+• Provide transparent rationales for clinical recommendations
+The potential applications of RAG in healthcare are vast and transformative:
+  Clinical Decision Support: RAG systems can assist clinicians by retrieving relevant case studies, treatment 
+guidelines, and drug interaction information in real-time, reducing diagnostic errors and improving treatment 
+outcomes [9].
+ Medical Education: These models can serve as intelligent tutors, providing medical students with accurate, 
+context-aware explanations drawn from the latest literature [10].
+ Patient Engagement: By generating personalized health information grounded in authoritative sources, RAG 
+systems can improve health literacy and shared decision-making [11].
+ Administrative Efficiency: Automating documentation tasks like clinical note generation and coding with 
+retrieval-verified accuracy can reduce clinician burnout [12].
+ This paper provides a comprehensive examination of RAG models in healthcare, analyzing their architectural 
+variations, performance characteristics, and practical implementations. We systematically review:
+1. The evolution of RAG architectures from naive to advanced modular implementations
+2. Performance benchmarks across medical specialties and use cases
+3. Ethical considerations and implementation challenges
+4. Emerging applications and future directions
+Our analysis reveals that while RAG models show tremendous promise in healthcare applications [13], their 
+successful implementation requires careful consideration of:
+• Retrieval accuracy and relevance in specialized medical contexts
+• Integration with clinical workflows and electronic health record systems
+• Privacy and security protections for sensitive patient data
+• Regulatory compliance and liability frameworks
+• Bias mitigation and equity considerations
+As healthcare systems worldwide face increasing pressure to deliver high-quality, cost-effective care, RAG 
+models offer a pathway to augment clinical expertise with AI-powered knowledge retrieval and synthesis [14]. 
+This review aims to provide researchers, clinicians, and healthcare administrators with the insights needed to 
+harness this potential responsibly and effectively.
+
+
+1 3                                        Neural Computing and Applications (2025) 37:28191–28267
+
+https://doi.org/10.1007/s00521-025-11666-9                                 28193
+
+ The subsequent sections will delve deeper into the technical architectures of medical RAG systems, their 
+performance across various healthcare applications, the datasets and evaluation metrics used to assess them, and 
+the ethical and practical considerations for their deployment in real-world clinical settings. Through this com- 
+prehensive analysis, aim to chart the current state of RAG in healthcare and illuminate promising directions for 
+future research and development in this critical intersection of AI and medicine.
+
+1.1 Contributions
+
+This survey paper makes the following key contributions:
+• Systematic Taxonomy of RAG Architectures: A hierarchical classification of Naive, Advanced, and 
+  Modular RAG frameworks with comparative analysis of their components and performance characteristics in 
+  medical applications.
+• Data-to-Model Pipeline Analysis: Comprehensive examination of the medical AI pipeline from foundational 
+  datasets (textual, visual, and multimodal) to implemented systems, highlighting distinct challenges and 
+  solutions for different data modalities.
+• Medical Application Spectrum: Coverage of RAG implementations across clinical domains including 
+  diagnostic support, treatment planning, medical education, and multimodal interpretation of imaging data.
+• Rigorous Model Evaluation: Standardized assessment of RAG systems using both quantitative metrics 
+  (accuracy, BLEU, ROUGE) and qualitative frameworks (S.C.O.R.E.) across medical benchmarks.
+• Implementation Challenges: Critical analysis of deployment barriers including data privacy, algorithmic 
+  bias, regulatory requirements, and clinical workflow integration.
+• Emerging Research Frontiers: Identification of promising directions including real-time knowledge 
+  integration, specialty-specific architectures, and validation protocols for clinical adoption.
+This work establishes a foundational reference for AI researchers, medical practitioners, and healthcare tech- 
+nologists developing next-generation RAG systems for medicine.
+
+
+2 Comprehensive applications of retrieval-augmented generation 
+  in healthcare [15–19]
+
+Retrieval-Augmented Generation (RAG) models represent a transformative advancement in healthcare AI by 
+synergizing the generative capabilities of Large Language Models (LLMs) with real-time access to authoritative 
+medical knowledge sources. This integration addresses critical challenges such as outdated training data and the 
+propensity for AI hallucination, ensuring that outputs are both accurate and grounded in the latest clinical 
+evidence. The following subsections explore the diverse applications of RAG in the medical domain, highlighting 
+its impact on clinical workflows, diagnostic precision, and patient care.
+
+2.1 Enhanced clinical documentation and decision support
+
+RAG models excel in processing and summarizing vast volumes of clinical data, including electronic health 
+records (EHRs), research literature, and patient notes. By distilling this information into concise summaries, they 
+empower healthcare professionals to quickly grasp complex cases. For instance, RAG-powered question-an- 
+swering (QA) systems retrieve evidence-based responses from trusted repositories like PubMed or clinical 
+guidelines, enabling clinicians to make informed decisions without manually sifting through extensive databases.
+ Key applications include:
+
+
+
+Neural Computing and Applications (2025) 37:28191–28267                 1 3
+
+28194                                                https://doi.org/10.1007/s00521-025-11666-9
+
+• Automated Clinical Summarization: Generation of patient summaries by synthesizing information from 
+  multiple EHR sections, laboratory results, and imaging reports
+• Real-time Clinical Guidelines Retrieval: Dynamic access to updated treatment protocols and best practices 
+  during patient encounters
+• Medication Reconciliation: Cross-referencing patient medications with drug interaction databases and 
+  formulary guidelines
+• Discharge Planning: Automated generation of discharge summaries with personalized patient instructions 
+  based on diagnosis and treatment history
+This capability is particularly valuable in time-sensitive scenarios, such as emergency medicine or ICU care, 
+where rapid access to relevant clinical information can significantly impact patient outcomes.
+
+2.2 Precision in named entity recognition (NER) and clinical data extraction
+
+In healthcare, extracting structured information from unstructured text—such as diagnoses, medications, or 
+laboratory results—is essential for automating workflows and maintaining data quality. RAG models leverage 
+medical ontologies and knowledge graphs to enhance NER accuracy, identifying and categorizing key clinical 
+entities with high precision.
+ Advanced applications include:
+• Automated ICD-10 and CPT Coding: Extraction and assignment of appropriate diagnostic and procedural 
+  codes from clinical notes
+• Clinical Trial Matching: Identification of eligible patients by extracting relevant criteria from EHRs and 
+  matching against trial protocols
+• Adverse Event Detection: Automated identification and reporting of adverse drug reactions and medical 
+  errors from clinical documentation
+• Quality Measure Calculation: Extraction of data elements required for healthcare quality reporting and 
+  performance metrics
+These systems can automatically populate EHRs with diagnostic codes or flag potential drug interactions by 
+cross-referencing patient data with up-to-date pharmacological databases, thereby reducing administrative bur- 
+dens and minimizing errors in data entry.
+
+2.3 Advanced diagnostic and treatment planning
+
+RAG models support differential diagnosis and personalized treatment planning by integrating multimodal data, 
+including patient histories, imaging reports, genomic profiles, and population health data. The systems provide 
+clinicians with evidence-based recommendations while maintaining transparency through source attribution.
+ Clinical applications encompass:
+• Differential Diagnosis Support: Generation of ranked differential diagnoses with supporting evidence from 
+  medical literature
+• Personalized Treatment Recommendations: Integration of patient-specific factors with current treatment 
+  guidelines and emerging therapies
+• Drug Dosing and Selection: Optimization of medication choices based on patient characteristics, drug 
+  interactions, and efficacy data
+• Prognostic Assessment: Risk stratification and outcome prediction using integrated clinical and research data
+In oncology, for instance, a RAG-augmented LLM could retrieve the latest research on targeted therapies while 
+correlating it with a patient’s genetic markers, tumor characteristics, and treatment history. Multi-turn dialog 
+systems powered by RAG enable dynamic interactions, allowing clinicians to refine queries iteratively—such as
+
+1 3                                        Neural Computing and Applications (2025) 37:28191–28267
+
+https://doi.org/10.1007/s00521-025-11666-9                                 28195
+
+exploring alternative diagnoses or comparing treatment efficacy—based on real-time retrieval of relevant studies 
+or case reports.
+
+2.4 Multimodal applications in medical imaging and pathology
+
+RAG extends its utility to visual data interpretation, bridging the gap between imaging analysis and textual 
+medical knowledge. These systems integrate computer vision capabilities with medical literature retrieval to 
+provide comprehensive diagnostic support.
+ Key implementations include:
+• Radiological Report Generation: Automated creation of structured radiology reports by combining image 
+  analysis with relevant diagnostic criteria and case studies
+• Pathology Image Analysis: Correlation of histopathological findings with literature on rare diseases and 
+  diagnostic patterns
+• Clinical Photography Assessment: Analysis of dermatological conditions, wound healing progress, and 
+  surgical outcomes
+• Medical Image Education: Generation of educational content by linking imaging findings to relevant medical 
+  literature and case studies
+In radiology, these models generate detailed descriptions of X-rays, CT scans, or MRIs by retrieving similar cases 
+and current diagnostic criteria, aiding radiologists in detecting anomalies and reducing interpretation time. For 
+pathology, RAG can correlate histopathology images with literature on rare diseases, improving diagnostic 
+confidence and supporting subspecialty consultation. Multimodal QA systems further allow clinicians to submit 
+image-based queries (e.g., “Identify this skin lesion”) and receive synthesized insights combining visual and 
+textual evidence.
+
+2.5 Clinical research and evidence synthesis
+
+RAG models significantly enhance clinical research capabilities by automating literature reviews, protocol 
+development, and data analysis workflows. These applications support evidence-based medicine and accelerate 
+the translation of research findings into clinical practice.
+ Research applications include:
+• Systematic Literature Reviews: Automated identification, screening, and synthesis of relevant research 
+  papers for meta-analyses
+• Clinical Protocol Development: Generation of research protocols by integrating regulatory requirements with 
+  best practices
+• Grant Writing Support: Assistance in literature review sections and methodology development for research 
+  proposals
+• Biomarker Discovery: Integration of genomic, proteomic, and clinical data to identify potential therapeutic 
+  targets
+
+2.6 Patient education and communication
+
+RAG systems enhance patient-provider communication by generating personalized educational materials and 
+facilitating patient engagement. These tools ensure that patient education is both accurate and tailored to indi- 
+vidual health literacy levels.
+ Communication applications encompass:
+
+
+
+Neural Computing and Applications (2025) 37:28191–28267                 1 3
+

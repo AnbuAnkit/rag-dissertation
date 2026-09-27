@@ -1,0 +1,353 @@
+﻿Received 27 October 2025, accepted 10 November 2025, date of publication 13 November 2025, 
+date of current version 19 November 2025.
+Digital Object Identifier 10.1109/ACCESS.2025.3632404
+
+
+
+
+
+
+
+
+
+A Comparative Evaluation of RAG Architectures
+
+
+for Cross-Domain LLM Applications: Design,
+
+
+Implementation, and Assessment
+
+
+
+PINAR ERSOY , (Senior Member, IEEE), AND MUSTAFA ERŞAHİN
+Research and Development Department, Commencis Teknoloji, 34467 Istanbul, Türkiye
+Corresponding author: Pinar Ersoy (pinar.ersoy@commencis.com)
+
+
+
+
+
+  ABSTRACT Retrieval-Augmented Generation (RAG) pairs large language models with external search 
+  to constrain knowledge staleness and hallucination, a critical need in finance and e-commerce where 
+  numerical precision and regulatory auditability are non-negotiable. This study resembles four paradigms: 
+  sparse, dense, hybrid, and fusion retrieval, each realized as LangChain templates for cloud-hosted GPT- 
+  4o and on-premises LLaMA deployments. We embed a zero-shot baseline and assess every pipeline with 
+  the Retrieval-Augmented Generation Assessment (RAGAS) protocol, which scores faithfulness, relevancy, 
+  context quality, and latency without revealing proprietary gold data. Hybrid and fusion systems achieve the 
+  best combination of recall and faithfulness. Dense retrieval maximizes semantic coverage; sparse retrieval 
+  provides clearer, faster traceability. Each yields substantial gains over the baseline by anchoring profit 
+  metrics, compliance evidence, and pricing to audited documents. Although empirical evaluation primarily 
+  focuses on finance and e-commerce, the same blueprints and metrics can apply to healthcare, education, and 
+  legal technology. The domains in scope demand reasoning that is traceable, bias-aware, and up to date. This 
+  study, therefore, provides an auditable, production-ready framework for reliable RAG across knowledge- 
+  intensive settings.
+
+
+
+  INDEX TERMS Artificial intelligence, generative AI, large language models, retrieval-augmented 
+  generation.
+
+
+
+
+I. INTRODUCTION                                                        tent and auditable provenance [2]. Four retrieval paradigms 
+Large Language Models (LLMs) excel in zero- and few-shot               dominate current practice. Sparse indices are transparent and 
+generalization for tasks as translation and summarization [1].         fast but brittle to lexical variation [6]. Dense indexing projects 
+However, their parameters may overlook recent large lan-               text into a neural embedding space, improving semantic recall 
+guage models demonstrating strong zero- and few-shot gen-              while reducing transparency and increasing compute cost [6]. 
+eralization on tasks such as translation and summarization.            Hybrid methods couple sparse and dense signals, trading 
+Since parametric stores may be outdated and occasionally               added engineering for greater robustness [7]. Fusion pipelines 
+invent specifics, they pose risks in sensitive settings such           chain retrieval stages to maximize coverage, at the expense of 
+as finance and e-commerce. Moreover, hallucinating spe-                latency. Although these approaches are considerably studied, 
+cific data poses risks in sensitive areas such as finance and          their comparative merits remain difficult to assess because 
+e-commerce. Retrieval-Augmented Generation (RAG) mit-                  prior evaluations (i) conflate retrieval and generation qual- 
+igates these risks by conditioning generation on passages              ity, (ii) under-specify key hyperparameters, and (iii) report 
+retrieved at inference time, thus providing up-to-date con-            aggregate scores without uncertainty quantification or sys- 
+                                                                       tematic error analysis. The recently introduced RAGAS 
+   The associate editor coordinating the review of this manuscript and framework offers a principled, model-agnostic approach to 
+approving it for publication was Maria Chiara Caschera .               separating retrieval quality from generation fidelity; however,
+
+                                   © 2025 The Authors. This work is licensed under a Creative Commons Attribution 4.0 License. 
+VOLUME 13, 2025                           For more information, see https://creativecommons.org/licenses/by/4.0/                   194185
+
+                                               P. Ersoy, M. Erşahin: Comparative Evaluation of RAG Architectures for Cross-Domain LLM Applications
+
+
+
+
+
+published uses rarely include confidence intervals, paired sig- hosted GPT-4 and on-premises LLaMA-class deployments. 
+
+nificance testing, or robustness checks across retrieval loads  Code utility is demonstrated by stress-testing templates under 
+
+and domains.                                                    varied retrieval loads and task types, not merely by listing 
+
+                                                                configurations.
+
+A. RESEARCH GAP
+What is missing is a rigorous, reproducible comparison          5) DECISION SUPPORT VISUALS
+
+of these paradigms under realistic workloads that (a) pre-      We include comparative tables, bar/radar charts, and 
+
+registers an evaluation protocol, (b) controls for tuning       latency–utility curves, enabling practitioners to select 
+
+decisions that materially affect outcomes, (c) quantifies       pipelines under explicit budget and SLA constraints.
+
+uncertainty and effect sizes, and (d) links engineering choices 
+to measurable gains in faithfulness, recall, latency, and cost. D. EVALUATION OVERVIEW
+
+                                                                To make the protocol concrete, we (i) stratify queries by 
+
+B. RESEARCH QUESTIONS                                           difficulty and domain (finance vs. e-commerce), (ii) balance 
+
+This study addresses the following:                             answerable/unanswerable instances to prevent inflation of 
+    • RQ1 (COMPARATIVE PERFORMANCE):                            faithfulness via abstention, (iii) fix the generator within a 
+      How do sparse, dense, hybrid, and fusion RAG              study cell to isolate retrieval effects, (iv) report RAGAS 
+      pipelines compare on faithfulness and answer recall       faithfulness and answer recall with 95% bootstrap CIs, paired 
+      when generation is held constant?                         tests across paradigms, and error taxonomies and (v) pro- 
+    • RQ2 (SENSITIVITY):                                        vide latency and cost distributions per query. All index-level 
+      How sensitive are outcomes to retrieval depth, chunk-     choices and dataset statistics are fully specified to ensure 
+      ing strategy, and index tuning?                           reproducibility.
+    • RQ3 (LATENCY–UTILITY):
+      Under realistic service-level constraints, which          E. SCOPE AND IMPACT
+      paradigm delivers the best cost-adjusted utility for      This study provides a clear plan for establishing reliable 
+      finance and e-commerce queries?                           retrieval-augmented generation (RAG) pipelines in real- 
+    • RQ4 (AUDIBILITY AND PROVENANCE)                           world settings. It combines architectural designs with a 
+      How do paradigms differ in citation coverage and          neutral evaluation method. The experiments focus on the 
+      source traceability (audibility) at the answer level?     finance and e-commerce sectors. However, this method can 
+    • RQ5 (ROBUSTNESS):                                         easily adapt to healthcare, education, and technology.
+                                                                   This study advances the evaluation of retrieval-augmented 
+   Are observed advantages stable across two hosting modal- 
+ities and across query difficulty strata?                       generation through a pre-registered and retrieval-isolating 
+                                                                protocol that couples claim-level audibility with paired 
+
+C. CONTRIBUTIONS                                                significance testing, bootstrap confidence intervals, and 
+                                                                prospective power analysis under explicit service-level con- 
+The paper makes five contributions:                             straints. The design holds the generator fixed within each 
+                                                                study cell, balances answerable and unanswerable items to 
+1) PROTOCOL                                                     curb abstention bias, and instruments retrieval templates 
+We introduce a pre-registered, task-agnostic evaluation har-    with telemetry for hit positions, latency distributions, and 
+ness that decouples retrieval from generation using RAGAS,      token–cost traces. Unlike prior comparisons that report point 
+reports bootstrap confidence intervals and paired significance  estimates without uncertainty or that conflate retrieval and 
+tests, and includes power analysis to size experiments.         decoding quality, the present framework links concrete index 
+
+                                                                choices and tuning knobs to measurable gains in faithfulness, 
+2) ABLATIONS AND SENSITIVITY                                    recall, auditability, and latency across both cloud and on- 
+We provide controlled ablations over top-k chunk sizes,         premises deployments. The contribution is methodological, 
+embedding families, and re-ranking, yielding Pareto frontiers   statistical, and deployment-oriented, rather than algorithmic, 
+that expose latency–quality trade-offs.                         in the retriever itself.
+
+
+3) AUDIBILITY METRIC                                            II. LITERATURE REVIEW
+
+We operationalize audibility as the fraction of answer claims   Modern information-retrieval research spans early proba- 
+
+supported by cited passages with confidence intervals, com-     bilistic models to neural ranking systems [10]. Within this 
+plementing faithfulness and answer recall.                      lineage, Retrieval-Augmented Generation (RAG) emerged 
+
+                                                                as a pivotal advance, explicitly coupling a large language 
+4) IMPLEMENTATION TEMPLATES WITH INSTRUMENTATION                model with an external retriever during inference. Lewis et al. 
+
+We release parameterized LangChain templates for each           inaugurated the paradigm by pairing a sequence-to-sequence 
+
+paradigm, featuring built-in telemetry for retrieval depth,     generator with Dense Passage Retrieval (DPR), allowing 
+
+latency, and cost, which have been validated on both cloud-     access to millions of document fragments and resetting the
+
+
+194186                                                                                                         VOLUME 13, 2025
+
+P. Ersoy, M. Erşahin: Comparative Evaluation of RAG Architectures for Cross-Domain LLM Applications
+
+
+
+state of the art in open-domain question answering [2]. Sub-    E. FUSION AND DECODER-LEVEL CONDITIONING 
+sequent studies refined negative sample strategies, unified     Fusion systems generalize hybrid retrieval by aggregating 
+retriever-generator training, and introduced memory-efficient   multi-stage evidence either before decoding or within the 
+vector stores, thus expanding the applicability of RAG to       generator (FiD), where the decoder attends over multiple 
+specialized domains, including finance and e-commerce [3].      retrieved passages [2], [9]. Query-expansion fusion probes 
+                                                                different regions of the semantic space to mitigate under- 
+A. BACKGROUND AND SCOPE                                         specified queries, whereas FiD learns to weight evidence 
+Modern information-retrieval (IR) has progressed from prob-     during the generation process. These designs typically yield 
+abilistic and vector-space formulations to neural rankers       the highest factual coverage and answer quality, albeit at 
+and retrieval-conditioned generation, establishing a contin-    the cost of latency and context-window pressure. They also 
+uum from transparent lexical matching to semantic, acquired     complicate post-hoc auditing, as token-to-source attributions 
+retrieval, and decoder-level fusion [10]. Within this scope,    can be diffuse.
+RAG formalized the practice of a generator with an external 
+retriever at inference time, thereby refreshing knowledge and   F. DOMAIN-DRIVEN DEPLOYMENTS
+reducing hallucinations for knowledge-intensive tasks [2].      In finance and e-commerce, production RAG systems 
+Subsequent work expanded the design space through bet-          combine structured and unstructured sources to answer 
+ter negatives and dual-encoder training for dense retrieval,    time-sensitive questions. Studies show reduced hallucina- 
+large-scale memory stores, and late-interaction/reranking       tions when grounding is evaluated using protocolized met- 
+mechanisms that mediate the precision–recall trade-off in       rics, such as RAGAS, if retrieval parameters are tuned 
+practical deployments [3], [4], [6], [7].                       to domain-specific idiosyncrasies (e.g., ticker/SKU tokens, 
+                                                                multilingual traffic, freshness) [3], [5]. These domains thus 
+B. SPARSE RETRIEVAL                                             serve as stress tests for precision, provenance, and latency 
+Sparse methods rank documents by lexical evidence, utiliz-      under realistic service-level objectives.
+ing interpretable term-frequency, document-frequency, and 
+normalization components, which yield latency on com-           G. IDENTIFIED GAPS AND POSITIONING
+modity hardware and auditable scores [5]. Their limitation      Despite steady progress, four methodological gaps recur in 
+is lexical structure, which is paraphrasing, synonymy, and      the literature and tooling that this paper addresses:
+cross-lingual variance, which may depress recall when 
+query wording diverges from the corpus, particularly in         1) ENTANGLEMENT OF RETRIEVAL AND GENERATION 
+regulated domains that value traceability and precise word-     Many evaluations aggregate outcomes without isolating 
+ing. Sparse methods often provide strong baselines yet          retrieval effects, which obscures the architectural choices that 
+benefit from complementary semantic retrieval to expand         drive gains. We adopt a model-agnostic protocol that fixes 
+coverage.                                                       the generator within each study cell and reports retrieval- 
+                                                                conditioned metrics.
+C. DENSE RETRIEVAL
+Dense Passage Retrieval (DPR) popularized dual encoders         2) UNDER-SPECIFIED EXPERIMENTAL KNOBS
+that match queries and contexts into an embedding space,        Key determinants of performance, top-k, chunking/overlap, 
+enabling nearest-neighbor (ANN) search to provide evi-          BM25, encoder family, and dimensionality, ANN index 
+dence under considerable change [6]. This semantic reach        type/parameters, reranking/fusion settings, are frequently 
+improves recall for conversational, paraphrastic, and mul-      omitted or only qualitatively described. We enumerate and 
+tilingual queries. However, it introduces higher indexing       ablate these factors to surface sensitivity and enable exact 
+costs and opacity; similarity in the latent space is not easily replication.
+decomposed into token-level justifications. These properties 
+motivate hybridization with transparent signals and the use of  3) LIMITED UNCERTAINTY AND ERROR ANALYSIS
+rerankers to retain precision.                                  Prior reports often present point estimates without confi- 
+                                                                dence intervals, paired significance tests, or error taxonomies. 
+D. HYBRID AND LATE-INTERACTION APPROACHES                       We incorporate bootstrap CIs, paired tests, and structured 
+Hybrid pipelines combine lexical and dense signals, which       error breakdowns alongside an audibility measure.
+compare contextualized query and passage token embeddings 
+at inference time [4], [7]. Evidence from papers suggests       4) INSUFFICIENT DEPLOYMENT-ORIENTED EVIDENCE 
+that these combinations enhance effectiveness across long       Code releases typically provide templates but little charac- 
+queries while incurring additional engineering and inference    terization of behavior under varied retrieval loads or latency 
+overhead [7]. In practice, hybrids are attractive when systems  constraints. We instrument templates with telemetry and 
+must preserve precision and auditability while expanding        present comparative tables and radar/latency plots to inform 
+recall on semantically varied inputs.                           system selection under explicit SLAs.
+
+VOLUME 13, 2025                                                                                                       194187
+
+                                               P. Ersoy, M. Erşahin: Comparative Evaluation of RAG Architectures for Cross-Domain LLM Applications
+
+
+
+
+
+   Taken together, the prior art establishes the building       1) CORPUS SOURCES AND PRE-PROCESSING
+blocks, sparse transparency, dense semantic reach, hybrid       We constructed two domain-specific corpora from publicly 
+robustness, and fusion-stage synthesis, while leaving open a    accessible, verifiable sources. Collection adhered to site 
+reproducible, statistics-aware comparison that clarifies how    policies and emphasized primary documents (regulatory fil- 
+architectural choices trade off faithfulness, recall, latency,  ings, investor relations materials, and official product/policy 
+and auditability in high-stakes domains. The remainder          pages) to maximize provenance. Table 1 details the sources, 
+of this paper fills that gap with an evaluation design          temporal coverage, document types, cleaning methods, and 
+that is both replicable and deployment-relevant, and that       statistics. Preprocessing involved extracting HTML and PDF 
+explicitly reports the methodological details reviewers have    text, removing boilerplate text, normalizing tables, canon- 
+required.                                                       icalizing currencies and dates, detecting and eliminating 
+
+                                                                near-duplicate records, and identifying languages. All doc- 
+III. MATERIALS AND METHODS                                      uments were tokenized with a WordPiece-compatible tok- 
+The zero-shot baseline utilizes the same generator as the RAG   enizer applied uniformly across all indexing pipelines.
+conditions, with a temperature of 0.2 and a maximum token 
+limit of 512. The prompt template is identical to the RAG       2) QUERY SET AND LABELING PROTOCOL
+template except that the context block is empty. Assessment     The test bed contains 500 finance/e-commerce questions 
+uses the same metrics, claim extraction procedure, and audit-   stratified by difficulty and by answerability (75% answerable, 
+ing rules as those applied to the RAG pipelines.                25% deliberately unanswerable). Answer keys are not dis- 
+   Retrieval-Augmented Generation (RAG) is a spectrum           closed; instead, we apply RAGAS-style metrics to separate 
+whose endpoints are strictly lexical retrieval and multistage,  retrieval quality from generation fidelity while preserving 
+semantically rich fusion. At one extreme, sparse retrievers     confidentiality. We log per-query source citations, passage 
+rely on inverted indices, such as TF–IDF or BM25, which         timestamps, and claim-to-evidence links to support audibility 
+excel at exact-term matching and offer fully traceable scor-    analysis [2], [9].
+ing [6]. On the other hand, fusion pipelines orchestrate several   Two independent annotators labelled a stratified 20% 
+retrieval stages, query reformulation, cross-index aggrega-     sample for answerability, domain, and difficulty; a senior 
+tion, or decoder-level attention to assemble an evidence set    reviewer adjudicated disagreements. Agreement was Cohen’s 
+that is simultaneously broad and precise. Between these poles   K = 0.77 for answerability (95% BCa CI 0.72–0.81), macro- 
+lie dense hybrid strategies that trade storage overhead for     averaged K = 0.69 across domain labels (95% BCa CI 
+semantic reach. The following subsections outline the end-to-   0.64–0.73), and weighted K = 0.74 for difficulty using 
+end workflows, LangChain implementations, and qualitative       quadratic weights (95% BCa CI 0.69–0.78). Agreement was 
+advantages and disadvantages of each paradigm. A conclud-       stable across the finance and e-commerce subsets (AK ≤ 
+ing table summarizes their relative performance under the       0.03).
+Retrieval-Augmented Generation Assessment (RAGAS) pro- 
+tocol.
+                                                                3) INDEXING AND HYPERPARAMETERS
+
+A. DATASET CONSTRUCTION                                         All retrievers were built from the same cleaned corpora. 
+Finance and e-commerce form testbeds since the accu-            The generator was held constant within study cells to isolate 
+racy depends on numerically exact statements, currency          retrieval effects. Table 2 enumerates index configurations and 
+and unit normalization, and frequent policy updates that        tuning knobs required for exact replication.
+stress recency. The domains also induce adversarial phras- 
+ing through ticker and SKU tokens that degrade purely           4) DETERMINISTIC SETUP AND VERSION PINNING
+
+lexical recall. These characteristics require provenance, tem-  Cloud (GPT-4o). Provider build: gpt-4o-2025-01-15 (sta- 
+poral alignment, and multilingual coverage, which makes the     ble snapshot); context window 128.000 tokens; decoding: 
+domains suitable proxies for deployment under audit and         temperature 0.20, top-p 0.90, nucleus sampling, max out- 
+freshness constraints. The query set comprises five hundred     put 512 tokens; tool use disabled; provider safety filters at 
+items stratified by domain and difficulty, with a seventy-five  defaults. No fine-tuning was performed. System prompts and 
+to twenty-five split of answerable and unanswerable items.      task prompts are identical across study cells and are released 
+Sources include public reports, product and policy pages,       verbatim with the artifacts (prompt template hash: pt-a17c).
+and historically dated facts. Unanswerable items are formed        On-prem (Llama-3-8B-Instruct). Base weights fp16; 
+through controlled time shifts, entity perturbations, and scope exported to GGUF q4_k_m for inference (group size 32). 
+restrictions that ensure the absence of direct evidence in the  Context window 8192 tokens; decoding settings mirror the 
+evidence pool. Each item undergoes dual-review screening.       cloud configuration (temperature 0.20, top-p 0.90, max 
+A senior reviewer adjudicates disagreements. Evidence pas-      output 512 tokens). Runtime llama.cpp (Metal backend); 
+sages are collected from primary sources and stored with        hardware MacBook Pro (Apple M3 Pro, 36 GB unified 
+source identifiers and timestamps. Leakage checks enforce       memory). No task-specific fine-tuning and no LoRA adapters 
+disjointness between prompts and the evidence pool.             were used.
+
+
+194188                                                                                                         VOLUME 13, 2025
+
+P. Ersoy, M. Erşahin: Comparative Evaluation of RAG Architectures for Cross-Domain LLM Applications
+
+
+TABLE 1. Corpus summary. TABLE 1. (Continued.) Corpus summary.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                          The generator is held constant within each study cell to 
+                         isolate retrieval effects. To support exact replication, the arti- 
+                         fact bundle includes all configuration files (model identifiers, 
+                         quantization, decoding parameters, and prompt templates) 
+                         and commit hashes.
+
+                         B. SPARSE RETRIEVAL RAG
+                         Sparse Retrieval RAG integrates a lexical search engine, most 
+                         commonly the BM25 algorithm, into a retrieval-augmented 
+                         generation pipeline. An incoming query is first tokenized, and 
+                         each term is weighted according to its TF–IDF score. BM25 
+                         then ranks the resulting vectors using length normalization. 
+                         The process follows a strictly linear sequence comprising 
+                         four stages, namely query parsing, BM25 retrieval, selection 
+                         of the highest-ranked passages, and language-model decod- 
+                         ing [5], [6]. The top-k passages are concatenated with the 
+                         original query and passed to the language model, ensuring 
+                         that the generated answer remains firmly grounded in primary 
+                         evidence. When prompted, for example, with “What was 
+                         Company X’s net profit in the latest quarter?”the retriever 
+                         identifies a sentence in the company’s Q4 filing stating that it 
+                         “reported a net profit of two billion USD,”and the model 
+                         answers accordingly. Since every element of the ranking 
+                         pipeline, token weights, inverse-document frequencies, and 
+                         BM25 scores, is fully inspectable, compliance officers in 
+                         heavily regulated domains such as finance and pharmaceu- 
+                         ticals can reconstruct exactly why a given passage achieved 
+                         precedence, thereby verifying the provenance and accuracy 
+                         of machine-generated outputs and meeting stringent audit 
+                         requirements.
+
+                         1) ADVANTAGES
+                         Sparse Retrieval RAG presents three principal benefits. 
+                         First, the BM25 scoring function is entirely transparent;
+
+
+
+VOLUME 13, 2025                               194189
+
